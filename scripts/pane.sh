@@ -7,7 +7,7 @@ current_pane_origin=$(tmux display-message -p $TMUX_FZF_CLIENT_ARG '#S:#{window_
 current_pane=$(tmux display-message -p $TMUX_FZF_CLIENT_ARG '#S:#{window_index}.#{pane_index}')
 
 if [[ -z "$TMUX_FZF_PANE_FORMAT" ]]; then
-    panes=$(tmux list-panes -a -F "#S:#{window_index}.#{pane_index}: [#{window_name}:#{pane_title}] #{pane_current_command}  [#{pane_width}x#{pane_height}] [history #{history_size}/#{history_limit}, #{history_bytes} bytes] #{?pane_active,[active],[inactive]}")
+    panes=$(tmux list-panes -a -F "#S:#{window_index}.#{pane_index}: [#{window_name}:#{pane_title}] #{pane_current_command}  [#{pane_width}x#{pane_height}] [history #{history_size}/#{history_limit}, #{history_bytes} bytes] #{?pane_active,[active],[inactive]}#{?#{&&:#{pane_active},#{window_zoomed_flag}},[zoomed],}")
 else
     panes=$(tmux list-panes -a -F "#S:#{window_index}.#{pane_index}: $TMUX_FZF_PANE_FORMAT")
 fi
@@ -66,9 +66,17 @@ else
     [[ "$target_origin" == "[cancel]" || -z "$target_origin" ]] && exit
     target=$(echo "$target_origin" | sed 's/: .*//')
     if [[ "$action" == "switch" ]]; then
+        zoom_active=$(tmux display-message -p $TMUX_FZF_CLIENT_ARG '#{window_zoomed_flag}')
         echo "$target" | sed -E 's/:.*//g' | xargs -I{} tmux switch-client $TMUX_FZF_CLIENT_ARG -t {}
         echo "$target" | sed -E 's/\..*//g' | xargs -I{} tmux select-window -t {}
         echo "$target" | xargs -I{} tmux select-pane -t {}
+        if [[ "$zoom_active" == "1" ]]; then
+            target_win=$(echo "$target" | sed -E 's/\..*//g')
+            target_win_zoomed=$(tmux display-message -p $TMUX_FZF_CLIENT_ARG -t "$target_win" '#{window_zoomed_flag}')
+            if [[ "$target_win_zoomed" == "0" ]]; then
+                tmux resize-pane -Z -t "$target"
+            fi
+        fi
     elif [[ "$action" == "kill" ]]; then
         echo "$target" | sort -r | xargs -I{} tmux kill-pane -t {}
     elif [[ "$action" == "swap" ]]; then
