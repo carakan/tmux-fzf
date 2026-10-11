@@ -17,4 +17,7 @@ fi
 items_origin+=$'\n[cancel]'
 item=$(echo "${items_origin}" | $TMUX_FZF_BIN $TMUX_FZF_OPTIONS )
 [[ "$item" == "[cancel]" || -z "$item" ]] && exit
-tmux run-shell -b "TMUX_FZF_CLIENT='$TMUX_FZF_CLIENT' $CURRENT_DIR/scripts/${item}.sh"
+# Hand the client geometry on to the sub-picker: scripts/.envs keys the whole
+# compact layout off these two, so a picker launched without them would fall
+# back to the desktop popup on a phone — the menu above is only the first hop.
+tmux run-shell -b "TMUX_FZF_CLIENT='$TMUX_FZF_CLIENT' TMUX_FZF_CLIENT_WIDTH='$TMUX_FZF_CLIENT_WIDTH' TMUX_FZF_CLIENT_HEIGHT='$TMUX_FZF_CLIENT_HEIGHT' $CURRENT_DIR/scripts/${item}.sh"
