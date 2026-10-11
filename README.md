@@ -129,11 +129,39 @@ This feature is automatically enabled in tmux >= 3.2, but you can disable it usi
 
 ## Key Binding
 
-For example, to use `prefix` + `C-f` (Ctrl+F), add this line to your `~/.tmux.conf`
+The plugin binds `prefix` + `F` when it loads. For another key, set the launch key **before** the plugin manager line in `~/.tmux.conf` — `main.tmux` reads it from the tmux global environment and binds it on every reload, so there is no ordering race:
 
 ```tmux
-TMUX_FZF_LAUNCH_KEY="C-f"
+set-environment -g TMUX_FZF_LAUNCH_KEY "C-f"
+run '~/.tmux/plugins/tpm/tpm'
 ```
+
+To bind the key by hand instead, do it **after** the plugin manager line, and pass both variables along — the scripts run detached and would otherwise fall back to the most recently active client and lose the screen geometry (see below):
+
+```tmux
+run '~/.tmux/plugins/tpm/tpm'
+bind-key C-f run-shell -b "TMUX_FZF_CLIENT='#{client_tty}' TMUX_FZF_CLIENT_WIDTH='#{client_width}' '#{TMUX_FZF_DIR}/main.sh'"
+```
+
+If you keep plugins outside `~/.tmux/plugins` (a custom `TPM_PLUGIN_DIR`), point the plugin at them — the launch key would otherwise target a directory without a `main.sh`:
+
+```tmux
+set-environment -g TMUX_FZF_DIR /opt/tpm/tmux-fzf
+```
+
+## Mobile and narrow clients
+
+`main.tmux` hands the picker the geometry of the client that pressed the key — `TMUX_FZF_CLIENT_WIDTH` and `TMUX_FZF_CLIENT_HEIGHT`. The picker switches to a compact layout when **either** dimension is below a fixed threshold — 140 columns or 30 rows:
+
+```
+-p -w 96% -h 88% -m --info=inline --padding='1,0,0,0'
+```
+
+with the preview pane turned off. Both dimensions matter: a phone in portrait is wide and short (Termius reports roughly `430x65`), while a landscape phone or a short split terminal is *narrow in rows and wide in columns* — the 60 % popup then leaves a dozen usable lines. A width-only check never caught that case.
+
+Sizes are percentages, and tmux resolves them itself: `fzf-tmux` forwards `-w`/`-h` percentages to `display-popup` as `-l`/`-w` (tmux 3.2+), which clamps them to the client. So the numbers above are the only thing this plugin decides — the popup chrome, positioning and clamping are tmux's job. Below tmux 3.2 `fzf-tmux` falls back to a pane split, which is why this plugin still branches on 3.1 elsewhere.
+
+An explicit `TMUX_FZF_OPTIONS` always wins on every client — phone or desktop: pinning the options means the layout is yours. The compact defaults only apply when you have not configured the options yourself.
 
 ## Fzf Behavior
 
@@ -150,6 +178,38 @@ TMUX_FZF_OPTIONS="-p -w 62% -h 38% -m"
 ```
 
 To list all available options of `fzf-tmux`, execute `~/.tmux/plugins/tmux-fzf/scripts/.fzf-tmux --help` in your shell.
+
+### Sharing one set of options with your shell
+
+`TMUX_FZF_OPTIONS` is **eval'd**, so it may reference other variables — a
+literal `--color=$FZF_COLORS` works as long as `FZF_COLORS` is in the
+environment the picker runs in. Pickers are started by the tmux server through
+`run-shell`, and that environment is the **session** store, not your shell's and
+not the `-g` store (a session keeps the environment it had when it was created,
+so a variable added with `set-environment -g` afterwards never reaches it).
+
+Push the value from your shell on every start — one copy, no duplication:
+
+```sh
+# ~/.zshrc
+export FZF_COLORS='fg:#FEF9E1,bg:#282828,pointer:#d4be98'
+export TMUX_FZF_OPTIONS="-p -w 60% -h 60% -m --color=$FZF_COLORS"
+if [ -n "$TMUX" ]; then
+    s="$(tmux display-message -p '#S')"
+    tmux set-environment -g FZF_COLORS "$FZF_COLORS"
+    tmux set-environment -g TMUX_FZF_OPTIONS "$TMUX_FZF_OPTIONS"
+    tmux set-environment -t "$s" FZF_COLORS "$FZF_COLORS"
+    tmux set-environment -t "$s" TMUX_FZF_OPTIONS "$TMUX_FZF_OPTIONS"
+fi
+```
+
+`update-environment` is *not* an alternative here: it copies from the client's
+environment — the terminal process, which never had these values, since they are
+exported later by the interactive shell.
+
+To give the pickers exactly the options plain `fzf` uses, set
+`TMUX_FZF_OPTIONS="$FZF_DEFAULT_OPTS"` in that same block (the popup then loses
+its `-p` positioning, which is the price of "identical").
 
 ## Preview
 
