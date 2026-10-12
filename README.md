@@ -163,6 +163,24 @@ Sizes are percentages, and tmux resolves them itself: `fzf-tmux` forwards `-w`/`
 
 An explicit `TMUX_FZF_OPTIONS` always wins on every client — phone or desktop: pinning the options means the layout is yours. The compact defaults only apply when you have not configured the options yourself.
 
+## MRU pane ordering
+
+`prefix` + pane switch lists panes **most-recently-used first**, then never-used panes in tmux order, so the list reads like Alt-Tab.
+
+Recording happens in `after-select-pane` and `after-select-window` hooks installed by `main.tmux`, which means every switch counts — picker picks, vim keys, clicks, window jumps — not only picks made in the picker. A record is a single append to `${XDG_CACHE_HOME:-~/.cache}/tmux-fzf-pane-mru` (atomic, no locking), keyed by `pane_id` (`%N`): `session:window.pane` indices shift when windows close, so an index-keyed entry would eventually point at a different pane. Entries for dead panes are pruned when the picker opens.
+
+| variable | default | meaning |
+| --- | --- | --- |
+| `TMUX_FZF_MRU` | `1` | `0` restores plain index order and stops recording |
+
+Inspect or reset the order with the helper:
+
+```sh
+scripts/mru.sh list    # newest first
+scripts/mru.sh prune   # drop entries for panes that no longer exist
+scripts/mru.sh file    # print the log path
+```
+
 ## Fzf Behavior
 
 This plugin will read [fzf environment variables](https://github.com/junegunn/fzf/#environment-variables), so you can use these variables to customize the behavior of fzf (e.g. prompt and color).

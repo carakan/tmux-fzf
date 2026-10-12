@@ -7,9 +7,42 @@ current_pane_origin=$(tmux display-message -p $TMUX_FZF_CLIENT_ARG '#S:#{window_
 current_pane=$(tmux display-message -p $TMUX_FZF_CLIENT_ARG '#S:#{window_index}.#{pane_index}')
 
 if [[ -z "$TMUX_FZF_PANE_FORMAT" ]]; then
-    panes=$(tmux list-panes -a -F "#S:#{window_index}.#{pane_index}: [#{window_name}:#{pane_title}] #{pane_current_command}  [#{pane_width}x#{pane_height}] [history #{history_size}/#{history_limit}, #{history_bytes} bytes] #{?pane_active,[active],[inactive]}#{?#{&&:#{pane_active},#{window_zoomed_flag}},[zoomed],}")
+    FMT="[#{window_name}:#{pane_title}] #{pane_current_command}  [#{pane_width}x#{pane_height}] [history #{history_size}/#{history_limit}, #{history_bytes} bytes] #{?pane_active,[active],[inactive]}#{?#{&&:#{pane_active},#{window_zoomed_flag}},[zoomed],}"
 else
-    panes=$(tmux list-panes -a -F "#S:#{window_index}.#{pane_index}: $TMUX_FZF_PANE_FORMAT")
+    FMT="$TMUX_FZF_PANE_FORMAT"
+fi
+
+# List panes once with their pane_id attached: the display lines keep the
+# historical "S:W.P: label" shape (scripts/.preview strips at the first ": ")
+# and the id lets the MRU ordering below key on pane_id — S:W.P indices shift
+# when windows close and would point stale entries at the wrong pane.
+sep=$'\x1f'
+panes_raw=$(tmux list-panes -a -F "#{pane_id}${sep}#S:#{window_index}.#{pane_index}${sep}${FMT}")
+panes=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" 'BEGIN { FS = sep } NF >= 3 { print $2 ": " $3 }')
+
+# $TMUX_FZF_MRU — most-recently-used ordering (default on). Recording happens
+# in the after-select-pane/after-select-window hooks from main.tmux, so it
+# covers every switch, not only picks made here. TMUX_FZF_MRU=0 restores the
+# plain index order.
+panes_mru=""
+if [ "${TMUX_FZF_MRU:-1}" != "0" ] && [ -x "$CURRENT_DIR/mru.sh" ]; then
+    "$CURRENT_DIR/mru.sh" prune >/dev/null 2>&1 || true
+    panes_mru=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" -v mru="$("$CURRENT_DIR/mru.sh" file)" '
+        BEGIN {
+            FS = sep
+            # The log is oldest first, so the LAST entry is the most recent.
+            # Collect it in file order — awk hash order is unspecified — then
+            # rank the tail 1 upwards, so the ascending sort below puts the
+            # most-recently-used pane on top. Duplicate entries in the log
+            # are fine: the first hit is the newest and wins.
+            while ((getline pid < mru) > 0)
+                if (!(pid in seen)) { seen[pid] = 1; seq[++known] = pid }
+            for (i = known; i >= 1; i--) rank[seq[i]] = known - i + 1
+        }
+        {
+            key = ($1 in rank) ? rank[$1] : 1000000 + ++fresh
+            printf "%d\t%s: %s\n", key, $2, $3
+        }' | sort -k1,1n -s | cut -f2-)
 fi
 
 FZF_DEFAULT_OPTS="$FZF_DEFAULT_OPTS --header='Select an action.'"
@@ -55,10 +88,12 @@ else
         FZF_DEFAULT_OPTS="$FZF_DEFAULT_OPTS --header='Select target pane.'"
     fi
     if [[ "$action" == "switch" || "$action" == "join" ]]; then
+        # MRU list leads when available; both are filtered the same way
+        targets=${panes_mru:-$panes}
         if [[ -z "$TMUX_FZF_SWITCH_CURRENT" || "$action" == "join" ]]; then
-            panes=$(echo "$panes" | grep -v "^$current_pane")
+            targets=$(echo "$targets" | grep -v "^$current_pane")
         fi
-        target_origin=$(printf "%s\n[cancel]" "$panes" | eval "$TMUX_FZF_BIN $TMUX_FZF_OPTIONS $TMUX_FZF_PREVIEW_OPTIONS")
+        target_origin=$(printf "%s\n[cancel]" "$targets" | eval "$TMUX_FZF_BIN $TMUX_FZF_OPTIONS $TMUX_FZF_PREVIEW_OPTIONS")
     else
         target_origin=$(printf "[current]\n%s\n[cancel]" "$panes" | eval "$TMUX_FZF_BIN $TMUX_FZF_OPTIONS $TMUX_FZF_PREVIEW_OPTIONS")
         target_origin=${target_origin/\[current\]/$current_pane_origin}
@@ -70,6 +105,14 @@ else
         echo "$target" | sed -E 's/:.*//g' | xargs -I{} tmux switch-client $TMUX_FZF_CLIENT_ARG -t {}
         echo "$target" | sed -E 's/\..*//g' | xargs -I{} tmux select-window -t {}
         echo "$target" | xargs -I{} tmux select-pane -t {}
+        # Record the pick even when the hooks from main.tmux are not installed
+        # (scripts invoked directly, e.g. a custom key binding). Recording is
+        # an idempotent append, so a double call from both paths is harmless.
+        # The id map is the same panes_raw listed above — no extra tmux call.
+        if [ "${TMUX_FZF_MRU:-1}" != "0" ] && [ -x "$CURRENT_DIR/mru.sh" ]; then
+            mru_id=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" -v r="$target" 'BEGIN { FS = sep } $2 == r { print $1 }')
+            [ -n "$mru_id" ] && "$CURRENT_DIR/mru.sh" record "$mru_id" >/dev/null 2>&1
+        fi
         if [[ "$zoom_active" == "1" ]]; then
             target_win=$(echo "$target" | sed -E 's/\..*//g')
             target_win_zoomed=$(tmux display-message -p $TMUX_FZF_CLIENT_ARG -t "$target_win" '#{window_zoomed_flag}')

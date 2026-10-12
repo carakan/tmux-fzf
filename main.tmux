@@ -39,3 +39,22 @@ tmux set-environment -g TMUX_FZF_DIR "$plugin_dir"
 # cramped — width alone does not catch that).
 tmux bind-key "$launch_key" run-shell -b \
     "TMUX_FZF_CLIENT='#{client_tty}' TMUX_FZF_CLIENT_WIDTH='#{client_width}' TMUX_FZF_CLIENT_HEIGHT='#{client_height}' '$plugin_dir/main.sh'"
+
+# MRU bookkeeping: every pane/window switch records the pane, so the pane
+# picker can lead with the panes actually in use (vim keys, clicks, window
+# jumps — not only picks made in the picker). A record is an idempotent
+# append and scripts/pane.sh also records after a switch, which covers
+# calling the scripts directly; TMUX_FZF_MRU=0 makes every record a no-op,
+# so the hooks can stay installed and the feature comes back without a
+# reload.
+#
+# -a appends instead of replacing: without it, loading this plugin would
+# destroy any after-select-pane/after-select-window hook another plugin (or
+# the user) had set. The guard is per event — checking the whole hook list
+# would let one surviving hook mask the other event — and keeps re-sourcing
+# from stacking duplicates.
+for hook in after-select-pane after-select-window; do
+    if ! tmux show-hooks -g "$hook" 2>/dev/null | grep -q "$plugin_dir/scripts/mru.sh record"; then
+        tmux set-hook -ag "$hook" "run-shell -b '$plugin_dir/scripts/mru.sh record #{pane_id}'"
+    fi
+done
