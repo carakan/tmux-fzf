@@ -181,35 +181,60 @@ To list all available options of `fzf-tmux`, execute `~/.tmux/plugins/tmux-fzf/s
 
 ### Sharing one set of options with your shell
 
-`TMUX_FZF_OPTIONS` is **eval'd**, so it may reference other variables — a
-literal `--color=$FZF_COLORS` works as long as `FZF_COLORS` is in the
-environment the picker runs in. Pickers are started by the tmux server through
-`run-shell`, and that environment is the **session** store, not your shell's and
-not the `-g` store (a session keeps the environment it had when it was created,
-so a variable added with `set-environment -g` afterwards never reaches it).
-
-Push the value from your shell on every start — one copy, no duplication:
+The cleanest setup is to configure `fzf` once, with the plain variables it
+already reads, and let the pickers inherit them: set `FZF_COLORS` for the
+palette and `FZF_DEFAULT_OPTS` for options, then push both into tmux. The popup
+pane is created by the tmux server and inherits the **global** environment store
+(verified on tmux 3.8 — including for a session created before the variable
+existed), so no `TMUX_FZF_*` copy is needed:
 
 ```sh
 # ~/.zshrc
 export FZF_COLORS='fg:#FEF9E1,bg:#282828,pointer:#d4be98'
-export TMUX_FZF_OPTIONS="-p -w 60% -h 60% -m --color=$FZF_COLORS"
+export FZF_DEFAULT_OPTS='--no-bold'
 if [ -n "$TMUX" ]; then
-    s="$(tmux display-message -p '#S')"
-    tmux set-environment -g FZF_COLORS "$FZF_COLORS"
-    tmux set-environment -g TMUX_FZF_OPTIONS "$TMUX_FZF_OPTIONS"
-    tmux set-environment -t "$s" FZF_COLORS "$FZF_COLORS"
-    tmux set-environment -t "$s" TMUX_FZF_OPTIONS "$TMUX_FZF_OPTIONS"
+    for v in FZF_COLORS FZF_DEFAULT_OPTS; do
+        tmux set-environment -g "$v" "${(P)v}"
+        tmux set-environment -t "$(tmux display-message -p '#S')" "$v" "${(P)v}"
+    done
 fi
 ```
+
+Colors then need no `--color` anywhere: `fzf` reads `FZF_COLORS` itself, and
+anything the plugin puts on the command line (geometry, its own preview window)
+takes precedence over the inherited options.
+
+Set `TMUX_FZF_OPTIONS` only when you need to override the popup's geometry or
+add flags the inherited defaults cannot express. It is **eval'd** by every
+picker (`main.sh`, `pane.sh`, `menu.sh`, …), so it may reference variables — a
+literal `--color=$FZF_COLORS` works, and quoting such as
+`--border-label=' fzf '` survives as a single argument — but it is shell input,
+not inert data: anything `$(…)`, backticks or `;` in it will execute. Never
+build it by concatenating `FZF_DEFAULT_OPTS` into it; push the variable instead
+and let `fzf` read it.
 
 `update-environment` is *not* an alternative here: it copies from the client's
 environment — the terminal process, which never had these values, since they are
 exported later by the interactive shell.
 
-To give the pickers exactly the options plain `fzf` uses, set
-`TMUX_FZF_OPTIONS="$FZF_DEFAULT_OPTS"` in that same block (the popup then loses
-its `-p` positioning, which is the price of "identical").
+To give the pickers the same options as plain `fzf`, push `FZF_DEFAULT_OPTS`
+into those stores alongside `FZF_COLORS`. The pickers inherit both from the
+popup's environment and `fzf` applies them itself, so there is nothing to
+concatenate and no need to set `TMUX_FZF_OPTIONS` at all:
+
+```sh
+for v in FZF_COLORS FZF_DEFAULT_OPTS; do
+    tmux set-environment -g "$v" "${(P)v}"
+    tmux set-environment -t "$s" "$v" "${(P)v}"
+done
+```
+
+Options the plugin puts on the command line win over the inherited ones, so the
+popup keeps its `-p` positioning and geometry while still using your colors and
+your key bindings. Two caveats come with sharing the variable: a `--preview` in
+`FZF_DEFAULT_OPTS` reaches every picker that passes no preview options of its
+own, and `--bind` entries *merge* with the plugin's rather than replacing them,
+so the plugin cannot turn a binding off once it is inherited.
 
 ## Preview
 
