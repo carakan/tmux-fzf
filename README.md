@@ -208,24 +208,29 @@ export FZF_DEFAULT_OPTS="--tmux center,60%,60% -m --layout=reverse --color='$FZF
 ```
 
 The popup is created by the tmux **server**, so the pickers see the server's
-global environment, not your shell's. Two ways to get the variable there:
-
-```tmux
-# 1) propagate from the attaching client on every attach (the client that runs
-#    `tmux attach` is your interactive shell, which already has the exports):
-set -ga update-environment FZF_DEFAULT_OPTS
-```
+environment, not your shell's. Push the variable there from the file that
+defines it — to the global environment **and every session** (run-shell jobs
+read the session environment, where an absent entry masks the global one):
 
 ```sh
-# 2) push it explicitly from a shell inside tmux — works even for sessions
-#    created before the variable existed (their env is a copy of the global one):
+# fzf.zsh (or wherever FZF_DEFAULT_OPTS is defined), after the export:
 if [ -n "$TMUX" ]; then
-    tmux set-environment -g FZF_DEFAULT_OPTS "$FZF_DEFAULT_OPTS"
-    tmux set-environment -t "$(tmux display-message -p '#S')" FZF_DEFAULT_OPTS "$FZF_DEFAULT_OPTS"
+  tmux set-environment -g FZF_DEFAULT_OPTS "$FZF_DEFAULT_OPTS"
+  tmux list-sessions -F '#S' 2>/dev/null | while IFS= read -r s; do
+    tmux set-environment -t "$s" FZF_DEFAULT_OPTS "$FZF_DEFAULT_OPTS"
+  done
 fi
 ```
 
-Either way, verify with `tmux show-environment -g FZF_DEFAULT_OPTS`.
+Do **not** put `FZF_DEFAULT_OPTS` in `update-environment`: on attach, tmux
+copies listed variables *from the client process* and **removes** them from the
+session when the client lacks them — and clients routinely lack it (plugin
+managers that auto-start tmux do so before the rc file exports it; so do
+second devices like phones or other SSH hosts). The session-level removal then
+shadows the global value for every run-shell job until a new shell pushes it
+back.
+
+Either way, verify with `tmux show-environment -g FZF_DEFAULT_OPTS` (global) and `tmux show-environment -t <session> FZF_DEFAULT_OPTS` (per session).
 
 `FZF_DEFAULT_OPTS` is data to the pickers, not code: nothing is `eval`'d — `fzf` parses it with its own shell-word rules. Flags with spaces or `=`-forms are fine; `$(…)`, backticks and `;` are passed to `fzf` literally.
 
