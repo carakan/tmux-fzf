@@ -19,7 +19,8 @@
 
 - [GNU bash](https://www.gnu.org/software/bash/)
 - [sed](https://www.gnu.org/software/sed/)
-- [junegunn/fzf](https://github.com/junegunn/fzf/)
+- [junegunn/fzf](https://github.com/junegunn/fzf/) ≥ 0.53 (native `--tmux` popups)
+- tmux ≥ 3.3 (popup requirement of current fzf; tmux < 3.2 has no popups at all)
 - [CopyQ](https://github.com/hluk/CopyQ/) (optional): Access system clipboard, fallback to builtin tmux buffers if copyq is not executable.
 - [pstree](https://gitlab.com/psmisc/psmisc/) (optional): Display process tree.
 
@@ -121,9 +122,9 @@ TMUX_FZF_MENU_POPUP_HEIGHT=50%
 
 ## Popup Window
 
-Popup window is a new feature introduced in tmux 3.2 . To enable this feature, you'll need to have tmux >= 3.2 installed.
+Every picker opens as a tmux popup (`fzf --tmux`), which requires tmux ≥ 3.2; current fzf raises that to tmux ≥ 3.3. fzf ignores the popup flag entirely outside tmux, so the scripts also work from a bare shell.
 
-This feature is automatically enabled in tmux >= 3.2, but you can disable it using `$TMUX_FZF_OPTIONS`, see [Fzf Behavior](#fzf-behavior).
+The default geometry is `center,62%,38%`, on compact clients `center,96%,88%` — see [Mobile and narrow clients](#mobile-and-narrow-clients). To change it, override the `--tmux` flag via `TMUX_FZF_OPTIONS`, see [Fzf Behavior](#fzf-behavior).
 
 # Customization
 
@@ -159,7 +160,7 @@ set-environment -g TMUX_FZF_DIR /opt/tpm/tmux-fzf
 
 with the preview pane turned off. Both dimensions matter: a phone in portrait is wide and short (Termius reports roughly `430x65`), while a landscape phone or a short split terminal is *narrow in rows and wide in columns* — the 60 % popup then leaves a dozen usable lines. A width-only check never caught that case.
 
-Sizes are percentages, and tmux resolves them itself: `fzf-tmux` forwards `-w`/`-h` percentages to `display-popup` as `-l`/`-w` (tmux 3.2+), which clamps them to the client. So the numbers above are the only thing this plugin decides — the popup chrome, positioning and clamping are tmux's job. Below tmux 3.2 `fzf-tmux` falls back to a pane split, which is why this plugin still branches on 3.1 elsewhere.
+The geometry is a native fzf flag now: `--tmux center,96%,88%` asks fzf to open the popup 96 % wide and 88 % tall, and tmux resolves and clamps the percentages itself — the popup chrome, positioning and clamping are tmux's job.
 
 An explicit `TMUX_FZF_OPTIONS` always wins on every client — phone or desktop: pinning the options means the layout is yours. The compact defaults only apply when you have not configured the options yourself.
 
@@ -185,17 +186,13 @@ scripts/mru.sh file    # print the log path
 
 This plugin will read [fzf environment variables](https://github.com/junegunn/fzf/#environment-variables), so you can use these variables to customize the behavior of fzf (e.g. prompt and color).
 
-In addition, this plugin supports customizing the options of `fzf-tmux` command which is [bundled with fzf](https://github.com/junegunn/fzf#fzf-tmux-script), you can customize them by adding something like this to `~/.tmux.conf`
+In addition, this plugin customizes the options of the `fzf` invocation (which is opened as a tmux popup via the native `--tmux` flag). The defaults are:
 
 ```tmux
-# Default value in tmux < 3.2
-TMUX_FZF_OPTIONS="-m"
-
-# Default value in tmux >= 3.2
-TMUX_FZF_OPTIONS="-p -w 62% -h 38% -m"
+TMUX_FZF_OPTIONS="--tmux center,62%,38% -m"
 ```
 
-To list all available options of `fzf-tmux`, execute `~/.tmux/plugins/tmux-fzf/scripts/.fzf-tmux --help` in your shell.
+To list all available options, execute `fzf --help` in your shell.
 
 ### Sharing one set of options with your shell
 
@@ -264,11 +261,7 @@ TMUX_FZF_PREVIEW=0
 
 Then the preview window will be hidden until `toggle-preview` is triggered.
 
-By default, the preview window will try to "follow" the content (see description in [the fzf docs](https://github.com/junegunn/fzf/blob/master/ADVANCED.md#log-tailing)). You can opt out this behavior using the following:
-
-```tmux
-TMUX_FZF_PREVIEW_FOLLOW=0
-```
+The preview window always tries to "follow" the content (see description in [the fzf docs](https://github.com/junegunn/fzf/blob/master/ADVANCED.md#log-tailing)).
 
 ## Order
 
@@ -348,7 +341,5 @@ If `$TMUX_FZF_CLIENT` is unset, the behavior is unchanged (most recently active 
 - [sainnhe/tmux-translator](https://github.com/sainnhe/tmux-translator): A translation plugin powered by popup window.
 
 # License
-
-The code of [/scripts/.fzf-tmux](./scripts/.fzf-tmux) is copied from [junegunn/fzf](https://github.com/junegunn/fzf#license) which is licensed under [MIT](https://github.com/junegunn/fzf/blob/master/LICENSE).
 
 Other code is distributed under [MIT](./LICENSE) && [Anti-996](./Anti-996-LICENSE).
