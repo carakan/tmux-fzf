@@ -194,44 +194,52 @@ The plugin configures `fzf` through the very variable `fzf` already reads: every
 
 ### Sharing one set of options with your shell
 
-The cleanest setup is to configure `fzf` once, with the plain variables it
-already reads, and let the pickers inherit them: set `FZF_COLORS` for the
-palette and `FZF_DEFAULT_OPTS` for options, then push both into tmux. The popup
-pane is created by the tmux server and inherits the **global** environment store
-(verified on tmux 3.8 — including for a session created before the variable
-existed), so no `TMUX_FZF_*` copy is needed:
+The cleanest setup is to configure `fzf` once and let the pickers inherit it.
+`FZF_DEFAULT_OPTS` is the only variable that matters: the palette rides inside
+it, because `fzf` does **not** read `FZF_COLORS` (that name is a dotfiles
+convention — the shell expands it into the options at `export` time; `fzf`
+never expands `$` in `FZF_DEFAULT_OPTS` itself, and a literal `--color=$FZF_COLORS`
+there makes `fzf` exit 2):
 
 ```sh
-# ~/.zshrc
+# ~/.zshrc (or wherever your fzf setup lives)
 export FZF_COLORS='fg:#FEF9E1,bg:#282828,pointer:#d4be98'
-export FZF_DEFAULT_OPTS='--no-bold'
+export FZF_DEFAULT_OPTS="--tmux center,60%,60% -m --layout=reverse --color='$FZF_COLORS' --border=rounded ${FZF_DEFAULT_OPTS:-}"
+```
+
+The popup is created by the tmux **server**, so the pickers see the server's
+global environment, not your shell's. Two ways to get the variable there:
+
+```tmux
+# 1) propagate from the attaching client on every attach (the client that runs
+#    `tmux attach` is your interactive shell, which already has the exports):
+set -ga update-environment FZF_DEFAULT_OPTS
+```
+
+```sh
+# 2) push it explicitly from a shell inside tmux — works even for sessions
+#    created before the variable existed (their env is a copy of the global one):
 if [ -n "$TMUX" ]; then
-    for v in FZF_COLORS FZF_DEFAULT_OPTS; do
-        tmux set-environment -g "$v" "${(P)v}"
-        tmux set-environment -t "$(tmux display-message -p '#S')" "$v" "${(P)v}"
-    done
+    tmux set-environment -g FZF_DEFAULT_OPTS "$FZF_DEFAULT_OPTS"
+    tmux set-environment -t "$(tmux display-message -p '#S')" FZF_DEFAULT_OPTS "$FZF_DEFAULT_OPTS"
 fi
 ```
 
-Colors then need no `--color` anywhere: `fzf` reads `FZF_COLORS` itself, and the plugin's per-picker command-line options (headers, its own preview window) take precedence over the inherited options.
+Either way, verify with `tmux show-environment -g FZF_DEFAULT_OPTS`.
 
-`FZF_DEFAULT_OPTS` is data to the pickers, not code: nothing is `eval`'d anymore — `fzf` parses it with its own shell-word rules. Flags with spaces or `=`-forms are fine; `$(…)`, backticks and `;` are passed to `fzf` literally.
-
-`update-environment` is *not* an alternative here: it copies from the client's
-environment — the terminal process, which never had these values, since they are
-exported later by the interactive shell.
+`FZF_DEFAULT_OPTS` is data to the pickers, not code: nothing is `eval`'d — `fzf` parses it with its own shell-word rules. Flags with spaces or `=`-forms are fine; `$(…)`, backticks and `;` are passed to `fzf` literally.
 
 ### Migrating from `TMUX_FZF_OPTIONS`
 
-The old variable is gone. Move its flags into the `FZF_DEFAULT_OPTS` you push into tmux (same recipe as above), with two rewrites:
+The old variable is gone. Move its flags into your `FZF_DEFAULT_OPTS` export, with two rewrites:
 
-- popup flags: `-p -w 60% -h 60%` → `--tmux center,60%,60%` (`--tmux` is a real `fzf` flag now);
-- `--color=$FZF_COLORS` expansions: delete them, `fzf` reads `FZF_COLORS` natively — that eval trick was the reason `TMUX_FZF_OPTIONS` had to be shell-eval'd, and it no longer exists.
+- popup flags: `-p -w 60% -h 60%` → `--tmux center,60%,60%` (`--tmux` is a real `fzf` flag now; `--popup` is its 0.74 alias);
+- `--color=$FZF_COLORS` stays an expansion, but in the **shell**, not in tmux config — `tmux` does not expand `$` in `set-environment` values, and `fzf` does not expand it either; only your shell does:
 
-```tmux
-# before: set-environment -g TMUX_FZF_OPTIONS "-p -w 60% -h 60% -m --border=rounded"
-# after (e.g. from ~/.zshrc, then push):
-export FZF_DEFAULT_OPTS="--tmux center,60%,60% -m --border=rounded ${FZF_DEFAULT_OPTS}"
+```sh
+# before (tmux.conf): set-environment -g TMUX_FZF_OPTIONS "-p -w 60% -h 60% -m --color=\$FZF_COLORS --border=rounded"
+# after (~/.zshrc):
+export FZF_DEFAULT_OPTS="--tmux center,60%,60% -m --color='$FZF_COLORS' --border=rounded ${FZF_DEFAULT_OPTS:-}"
 ```
 
 Options the plugin puts on the command line win over the inherited ones, so the
