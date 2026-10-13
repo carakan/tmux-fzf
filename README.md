@@ -124,7 +124,7 @@ TMUX_FZF_MENU_POPUP_HEIGHT=50%
 
 Every picker opens as a tmux popup (`fzf --tmux`), which requires tmux ≥ 3.2; current fzf raises that to tmux ≥ 3.3. fzf ignores the popup flag entirely outside tmux, so the scripts also work from a bare shell.
 
-The default geometry is `center,62%,38%`, on compact clients `center,96%,88%` — see [Mobile and narrow clients](#mobile-and-narrow-clients). To change it, override the `--tmux` flag via `TMUX_FZF_OPTIONS`, see [Fzf Behavior](#fzf-behavior).
+The default geometry is `center,62%,38%`, on compact clients `center,96%,88%` — see [Mobile and narrow clients](#mobile-and-narrow-clients). To change it, add your own `--tmux` flag to `FZF_DEFAULT_OPTS`, see [Fzf Behavior](#fzf-behavior).
 
 # Customization
 
@@ -162,7 +162,7 @@ with the preview pane turned off. Both dimensions matter: a phone in portrait is
 
 The geometry is a native fzf flag now: `--tmux center,96%,88%` asks fzf to open the popup 96 % wide and 88 % tall, and tmux resolves and clamps the percentages itself — the popup chrome, positioning and clamping are tmux's job.
 
-An explicit `TMUX_FZF_OPTIONS` always wins on every client — phone or desktop: pinning the options means the layout is yours. The compact defaults only apply when you have not configured the options yourself.
+Your own options always win: `fzf` applies `FZF_DEFAULT_OPTS` with last-occurrence-wins, so a `--tmux` flag you add there replaces the plugin's geometry — on the phone too. That is the supported way to pin a layout.
 
 ## MRU pane ordering
 
@@ -184,15 +184,13 @@ scripts/mru.sh file    # print the log path
 
 ## Fzf Behavior
 
-This plugin will read [fzf environment variables](https://github.com/junegunn/fzf/#environment-variables), so you can use these variables to customize the behavior of fzf (e.g. prompt and color).
+The plugin configures `fzf` through the very variable `fzf` already reads: every picker **prepends** its defaults to `FZF_DEFAULT_OPTS` —
 
-In addition, this plugin customizes the options of the `fzf` invocation (which is opened as a tmux popup via the native `--tmux` flag). The defaults are:
-
-```tmux
-TMUX_FZF_OPTIONS="--tmux center,62%,38% -m"
+```
+--tmux center,62%,38% -m
 ```
 
-To list all available options, execute `fzf --help` in your shell.
+(`--tmux center,96%,88% -m --info=inline --padding 1,0,0,0` on compact clients) — and then your own `FZF_DEFAULT_OPTS` follows, where later occurrences win. To change the popup geometry, add your own `--tmux` flag; to change anything else, add the flag. To list all available options, execute `fzf --help` in your shell.
 
 ### Sharing one set of options with your shell
 
@@ -215,33 +213,25 @@ if [ -n "$TMUX" ]; then
 fi
 ```
 
-Colors then need no `--color` anywhere: `fzf` reads `FZF_COLORS` itself, and
-anything the plugin puts on the command line (geometry, its own preview window)
-takes precedence over the inherited options.
+Colors then need no `--color` anywhere: `fzf` reads `FZF_COLORS` itself, and the plugin's per-picker command-line options (headers, its own preview window) take precedence over the inherited options.
 
-Set `TMUX_FZF_OPTIONS` only when you need to override the popup's geometry or
-add flags the inherited defaults cannot express. It is **eval'd** by every
-picker (`main.sh`, `pane.sh`, `menu.sh`, …), so it may reference variables — a
-literal `--color=$FZF_COLORS` works, and quoting such as
-`--border-label=' fzf '` survives as a single argument — but it is shell input,
-not inert data: anything `$(…)`, backticks or `;` in it will execute. Never
-build it by concatenating `FZF_DEFAULT_OPTS` into it; push the variable instead
-and let `fzf` read it.
+`FZF_DEFAULT_OPTS` is data to the pickers, not code: nothing is `eval`'d anymore — `fzf` parses it with its own shell-word rules. Flags with spaces or `=`-forms are fine; `$(…)`, backticks and `;` are passed to `fzf` literally.
 
 `update-environment` is *not* an alternative here: it copies from the client's
 environment — the terminal process, which never had these values, since they are
 exported later by the interactive shell.
 
-To give the pickers the same options as plain `fzf`, push `FZF_DEFAULT_OPTS`
-into those stores alongside `FZF_COLORS`. The pickers inherit both from the
-popup's environment and `fzf` applies them itself, so there is nothing to
-concatenate and no need to set `TMUX_FZF_OPTIONS` at all:
+### Migrating from `TMUX_FZF_OPTIONS`
 
-```sh
-for v in FZF_COLORS FZF_DEFAULT_OPTS; do
-    tmux set-environment -g "$v" "${(P)v}"
-    tmux set-environment -t "$s" "$v" "${(P)v}"
-done
+The old variable is gone. Move its flags into the `FZF_DEFAULT_OPTS` you push into tmux (same recipe as above), with two rewrites:
+
+- popup flags: `-p -w 60% -h 60%` → `--tmux center,60%,60%` (`--tmux` is a real `fzf` flag now);
+- `--color=$FZF_COLORS` expansions: delete them, `fzf` reads `FZF_COLORS` natively — that eval trick was the reason `TMUX_FZF_OPTIONS` had to be shell-eval'd, and it no longer exists.
+
+```tmux
+# before: set-environment -g TMUX_FZF_OPTIONS "-p -w 60% -h 60% -m --border=rounded"
+# after (e.g. from ~/.zshrc, then push):
+export FZF_DEFAULT_OPTS="--tmux center,60%,60% -m --border=rounded ${FZF_DEFAULT_OPTS}"
 ```
 
 Options the plugin puts on the command line win over the inherited ones, so the
