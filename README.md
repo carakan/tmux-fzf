@@ -187,10 +187,10 @@ scripts/mru.sh file    # print the log path
 The plugin configures `fzf` through the very variable `fzf` already reads: every picker **prepends** its defaults to `FZF_DEFAULT_OPTS` —
 
 ```
---tmux center,62%,38% -m
+--tmux center,62%,38% -m --preview-window :follow
 ```
 
-(`--tmux center,96%,88% -m --info=inline --padding 1,0,0,0` on compact clients) — and then your own `FZF_DEFAULT_OPTS` follows, where later occurrences win. To change the popup geometry, add your own `--tmux` flag; to change anything else, add the flag. To list all available options, execute `fzf --help` in your shell.
+(`--tmux center,96%,88% -m --info=inline --padding 1,0,0,0` on compact clients) — and then your own `FZF_DEFAULT_OPTS` follows, where later occurrences win. To change the popup geometry or the preview window, add your own `--tmux` / `--preview-window` flag; to change anything else, add the flag. To list all available options, execute `fzf --help` in your shell.
 
 ### Sharing one set of options with your shell
 
@@ -243,15 +243,21 @@ so the plugin cannot turn a binding off once it is inherited.
 
 ## Preview
 
-Preview is enabled by default. To hide it, add something like this to your `~/.tmux.conf`:
+The preview **content** is plugin functionality: `scripts/.preview` renders a pane, `scripts/.preview-session` renders a session. Preview is enabled by default; `TMUX_FZF_PREVIEW=0` removes the preview command from every picker.
 
-```tmux
-TMUX_FZF_PREVIEW=0
+The preview **window** is plain `fzf` styling and follows the same rule as everything fzf-native: the plugin only provides a default, prepended to `FZF_DEFAULT_OPTS` —
+
+```
+--preview-window :follow
 ```
 
-Then the preview window will be hidden until `toggle-preview` is triggered.
+("follow" the content as it changes, see [the fzf docs](https://github.com/junegunn/fzf/blob/master/ADVANCED.md#log-tailing)) — and your own `--preview-window` replaces it wholesale:
 
-The preview window always tries to "follow" the content (see description in [the fzf docs](https://github.com/junegunn/fzf/blob/master/ADVANCED.md#log-tailing)).
+```tmux
+set-environment -g FZF_DEFAULT_OPTS "--preview-window right:60%:wrap-word"
+```
+
+With `TMUX_FZF_PREVIEW=0` the preview command is gone too, so a `--preview` of your own in `FZF_DEFAULT_OPTS` (if you have one) applies untouched.
 
 ## Order
 
