@@ -21,13 +21,17 @@ out=$(bash -c '
 assert_eq "user preview window comes after the default" \
     "--tmux center,62%,38% -m --preview-window :follow --preview-window right:60%:wrap-word" "$out"
 
-# Compact client: near-fullscreen geometry + inline info, preview command off
+# Compact client: near-fullscreen geometry + inline info, preview command off,
+# and the chrome-strip APPENDED after the user's options so it wins there —
+# padding and footer would eat the few lines a phone has.
 out=$(bash -c '
     TMUX_FZF_CLIENT_WIDTH=100 TMUX_FZF_CLIENT_HEIGHT=20
+    FZF_DEFAULT_OPTS="--padding=1,2 --footer=hi"
     source "'"$REPO_ROOT"'/scripts/.envs"
     printf "%s\narr:%d" "$FZF_DEFAULT_OPTS" "${#TMUX_FZF_PREVIEW_OPTIONS[@]}"')
-assert_contains "compact geometry" "--tmux center,96%,88% -m --info=inline --padding 1,0,0,0" "$out"
-assert_contains "compact turns the preview off" "arr:0" "$out"
+assert_eq "compact strips padding and footer after user opts" \
+    "--tmux center,96%,88% -m --info=inline --padding=1,2 --footer=hi --padding=0 --footer= --no-footer-border
+arr:0" "$out"
 
 # Wide-but-short client is compact too (height alone triggers)
 out=$(bash -c '
@@ -51,7 +55,7 @@ out=$(bash -c '
     printf "arr:%d\n%s" "${#TMUX_FZF_PREVIEW_OPTIONS[@]}" "$FZF_DEFAULT_OPTS"')
 assert_eq "preview off: empty arrays, no follow default" \
     "arr:0
---tmux center,62%,38% -m " "$out"
+--tmux center,62%,38% -m" "$out"
 
 # Client pinning: TMUX_FZF_CLIENT_ARG
 out=$(bash -c '

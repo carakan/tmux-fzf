@@ -53,6 +53,11 @@ fi
 # replaces the geometry, which is also how a pinned layout beats the compact
 # one on a phone.
 #
+# The one exception is the compact (phone) layout: its chrome-strip is
+# APPENDED after the user's options, because the point of the compact layout
+# is usability, not preference — padding and the footer eat the few lines a
+# phone client has. Colors, binds and layout flags still come from the user.
+#
 # --tmux is native since fzf 0.53 and ignored outside tmux; -m enables the
 # TAB marking that kill/join rely on.
 #
@@ -62,14 +67,16 @@ fi
 # unless you set TMUX_FZF_PREVIEW=0 (after which even your own --preview
 # command, if you have one, applies untouched).
 if [ "$compact_client" == "1" ]; then
-  plugin_opts="--tmux center,96%,88% -m --info=inline --padding 1,0,0,0"
+  plugin_opts="--tmux center,96%,88% -m --info=inline"
+  plugin_opts_tail="--padding=0 --footer= --no-footer-border"
 else
   plugin_opts="--tmux center,62%,38% -m"
+  plugin_opts_tail=""
 fi
 if [ "$TMUX_FZF_PREVIEW" == 1 ]; then
   plugin_opts="$plugin_opts --preview-window :follow"
 fi
-export FZF_DEFAULT_OPTS="$plugin_opts ${FZF_DEFAULT_OPTS:-}"
+export FZF_DEFAULT_OPTS="$plugin_opts${FZF_DEFAULT_OPTS:+ ${FZF_DEFAULT_OPTS}}${plugin_opts_tail:+ $plugin_opts_tail}"
 
 # $TMUX_FZF_CLIENT_ARG
 # Commands executed via "tmux run-shell -b" have no client context, so tmux
