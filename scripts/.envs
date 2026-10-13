@@ -30,45 +30,34 @@ if [ -n "$TMUX_FZF_CLIENT_WIDTH" ] && [ -n "$TMUX_FZF_CLIENT_HEIGHT" ]; then
     esac
 fi
 
-# $TMUX_FZF_PREVIEW_OPTIONS && $TMUX_FZF_PREVIEW_SESSION_OPTIONS
+# $TMUX_FZF_PREVIEW_OPTIONS && $TMUX_FZF_PREVIEW_SESSION_OPTIONS — arrays,
+# expanded as "${TMUX_FZF_PREVIEW_OPTIONS[@]}", so no eval and no quoting
+# games at the call sites. Empty when the preview is off.
 TMUX_FZF_PREVIEW="${TMUX_FZF_PREVIEW:-1}"
 if [ "$TMUX_FZF_PREVIEW" == 1 ]; then
-  TMUX_FZF_PREVIEW_OPTIONS="--preview='$current_dir/.preview {}' --preview-window=:follow"
-  TMUX_FZF_PREVIEW_SESSION_OPTIONS="--preview='$current_dir/.preview-session {}' --preview-window=:follow"
+  TMUX_FZF_PREVIEW_OPTIONS=(--preview "$current_dir/.preview {}" --preview-window :follow)
+  TMUX_FZF_PREVIEW_SESSION_OPTIONS=(--preview "$current_dir/.preview-session {}" --preview-window :follow)
 else
-  TMUX_FZF_PREVIEW_OPTIONS=""
-  TMUX_FZF_PREVIEW_SESSION_OPTIONS=""
+  TMUX_FZF_PREVIEW_OPTIONS=()
+  TMUX_FZF_PREVIEW_SESSION_OPTIONS=()
 fi
 
-# $TMUX_FZF_BIN
-TMUX_FZF_BIN="$(command -v fzf)"
-
-# $TMUX_FZF_OPTIONS
+# Popup geometry and multi-select: the plugin's defaults. They are PREPENDED
+# to FZF_DEFAULT_OPTS, so anything the user added there (pushed into the tmux
+# global environment — the pickers are run-shell children of the server and
+# inherit it, see README) comes later and wins per fzf's precedence. No
+# TMUX_FZF_OPTIONS knob anymore: the user's own FZF_DEFAULT_OPTS --tmux flag
+# replaces the geometry, which is also how a pinned layout beats the compact
+# one on a phone.
 #
-# Three sources, in this order of precedence:
-#   1. TMUX_FZF_OPTIONS set by the user (tmux global environment) — untouched,
-#      on every client: pinning the options means the layout is yours, phone
-#      or desktop.
-#   2. a compact client with nothing pinned: the built-in near-fullscreen
-#      layout, preview pane off, inline info. Phones report plenty of columns
-#      but few rows — Termius on a phone reports ~430x65 — so the popup that
-#      looks fine on a desktop window is cramped there, and a preview pane eats
-#      the width that makes the list readable.
-#   3. the historical defaults below
-#
-# TMUX_FZF_OPTIONS_USER records that the user pinned the options, so the
-# built-in compact branch does not silently discard their configuration.
-TMUX_FZF_OPTIONS_USER=""
-[ -n "$TMUX_FZF_OPTIONS" ] && TMUX_FZF_OPTIONS_USER=1
-
-# Note: the compact layout turns the preview off in the detection block above,
-# before TMUX_FZF_PREVIEW_OPTIONS is built. Setting it here would be too late -
-# the preview block has already decided by the time this runs.
-if [ -z "$TMUX_FZF_OPTIONS_USER" ] && [ "$compact_client" == "1" ]; then
-  TMUX_FZF_OPTIONS="--tmux center,96%,88% -m --info=inline --padding='1,0,0,0'"
+# --tmux is native since fzf 0.53 and ignored outside tmux; -m enables the
+# TAB marking that kill/join rely on.
+if [ "$compact_client" == "1" ]; then
+  plugin_opts="--tmux center,96%,88% -m --info=inline --padding 1,0,0,0"
 else
-  [ -z "$TMUX_FZF_OPTIONS" ] && TMUX_FZF_OPTIONS="--tmux center,62%,38% -m"
+  plugin_opts="--tmux center,62%,38% -m"
 fi
+export FZF_DEFAULT_OPTS="$plugin_opts ${FZF_DEFAULT_OPTS:-}"
 
 # $TMUX_FZF_CLIENT_ARG
 # Commands executed via "tmux run-shell -b" have no client context, so tmux
@@ -81,4 +70,5 @@ TMUX_FZF_CLIENT_ARG=""
 # Unset temporary variables and functions.
 unset \
   current_dir \
-  compact_client
+  compact_client \
+  plugin_opts

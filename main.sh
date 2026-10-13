@@ -15,11 +15,9 @@ if [[ ! -z "$TMUX_FZF_MENU" ]]; then
     items_origin+=$'\nmenu'
 fi
 items_origin+=$'\n[cancel]'
-# Same eval as every other script: $TMUX_FZF_OPTIONS can contain shell
-# expansions (--color=$FZF_COLORS is the documented example), and without eval
-# fzf receives the literal string and rejects it with
-# "invalid color specification: $FZF_COLORS" — the menu then dies silently.
-item=$(echo "${items_origin}" | eval "$TMUX_FZF_BIN $TMUX_FZF_OPTIONS")
+# fzf reads the plugin defaults plus the user's own options from
+# FZF_DEFAULT_OPTS (scripts/.envs) — no eval, so options are data, never code.
+item=$(echo "${items_origin}" | fzf)
 [[ "$item" == "[cancel]" || -z "$item" ]] && exit
 # Hand the client geometry on to the sub-picker: scripts/.envs keys the whole
 # compact layout off these two, so a picker launched without them would fall
