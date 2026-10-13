@@ -50,13 +50,14 @@ fi
 # global environment — the pickers are run-shell children of the server and
 # inherit it, see README) comes later and wins per fzf's precedence. No
 # TMUX_FZF_OPTIONS knob anymore: the user's own FZF_DEFAULT_OPTS --tmux flag
-# replaces the geometry, which is also how a pinned layout beats the compact
-# one on a phone.
+# replaces the geometry on desktop clients.
 #
-# The one exception is the compact (phone) layout: its chrome-strip is
+# The exception is the compact (phone) layout: geometry AND chrome-strip are
 # APPENDED after the user's options, because the point of the compact layout
-# is usability, not preference — padding and the footer eat the few lines a
-# phone client has. Colors, binds and layout flags still come from the user.
+# is usability, not preference — a --tmux/--popup pin sized for a desktop
+# window must not shrink the popup on an 82-column phone, and padding/footer
+# eat the few rows a phone has. Colors, binds and layout flags still come
+# from the user.
 #
 # --tmux is native since fzf 0.53 and ignored outside tmux; -m enables the
 # TAB marking that kill/join rely on.
@@ -67,8 +68,8 @@ fi
 # unless you set TMUX_FZF_PREVIEW=0 (after which even your own --preview
 # command, if you have one, applies untouched).
 if [ "$compact_client" == "1" ]; then
-  plugin_opts="--tmux center,96%,88% -m --info=inline"
-  plugin_opts_tail="--padding=0 --footer= --no-footer-border"
+  plugin_opts="-m --info=inline"
+  plugin_opts_tail="--tmux center,96%,88% --padding=0 --footer= --no-footer-border"
 else
   plugin_opts="--tmux center,62%,38% -m"
   plugin_opts_tail=""

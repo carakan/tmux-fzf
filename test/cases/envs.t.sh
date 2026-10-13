@@ -26,12 +26,21 @@ assert_eq "user preview window comes after the default" \
 # padding and footer would eat the few lines a phone has.
 out=$(bash -c '
     TMUX_FZF_CLIENT_WIDTH=100 TMUX_FZF_CLIENT_HEIGHT=20
-    FZF_DEFAULT_OPTS="--padding=1,2 --footer=hi"
+    FZF_DEFAULT_OPTS="--padding=1,2 --footer=hi --popup=center,60%,60%"
     source "'"$REPO_ROOT"'/scripts/.envs"
     printf "%s\narr:%d" "$FZF_DEFAULT_OPTS" "${#TMUX_FZF_PREVIEW_OPTIONS[@]}"')
-assert_eq "compact strips padding and footer after user opts" \
-    "--tmux center,96%,88% -m --info=inline --padding=1,2 --footer=hi --padding=0 --footer= --no-footer-border
+assert_eq "compact geometry and chrome win after user pins" \
+    "-m --info=inline --padding=1,2 --footer=hi --popup=center,60%,60% --tmux center,96%,88% --padding=0 --footer= --no-footer-border
 arr:0" "$out"
+
+# A real phone: Termius portrait reports 82x42 — width alone makes it compact
+out=$(bash -c '
+    TMUX_FZF_CLIENT_WIDTH=82 TMUX_FZF_CLIENT_HEIGHT=42
+    FZF_DEFAULT_OPTS="--popup=center,60%,60%"
+    source "'"$REPO_ROOT"'/scripts/.envs"
+    printf "%s" "$FZF_DEFAULT_OPTS"')
+assert_contains "82x42 phone client gets fullscreen geometry" \
+    "--popup=center,60%,60% --tmux center,96%,88%" "$out"
 
 # Wide-but-short client is compact too (height alone triggers)
 out=$(bash -c '
