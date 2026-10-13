@@ -11,18 +11,20 @@ stub_fzf_pick "$SANDBOX/fzf-dump"
 cd "$REPO_ROOT"
 "$PWD/scripts/pane.sh" switch >/dev/null 2>&1
 
-# fzf received: header + preview as single argv elements
-assert_contains "header passed as argv" "== ARGV
+# fzf received: the picker-specific preview command as single argv elements;
+# the preview WINDOW default rides the environment instead
+assert_contains "preview command passed as argv" "== ARGV
   <--header>
   <Select target pane.>
   <--preview>
-  <$REPO_ROOT/scripts/.preview {}>
-  <--preview-window>
-  <:follow>" "$(sed -n '/== ARGV/,/== ENV/p' "$SANDBOX/fzf-dump" | sed '$d')"
+  <$REPO_ROOT/scripts/.preview {}>" "$(sed -n '/== ARGV/,/== ENV/p' "$SANDBOX/fzf-dump" | sed '$d')"
+grep -q '<--preview-window>' "$SANDBOX/fzf-dump" \
+    && { TESTS_FAIL=$((TESTS_FAIL+1)); echo "  FAIL window flag must not be on argv"; } \
+    || { TESTS_PASS=$((TESTS_PASS+1)); echo "  ok   no window flag on argv"; }
 
-# fzf received the plugin geometry via the environment
-assert_contains "geometry via FZF_DEFAULT_OPTS" "ENV
-  <--tmux center,62%,38% -m" "$(sed -n '/== ENV/,/== STDIN/p' "$SANDBOX/fzf-dump" | sed '$d')"
+# fzf received the plugin geometry AND the follow default via the environment
+assert_contains "geometry and follow via FZF_DEFAULT_OPTS" "ENV
+  <--tmux center,62%,38% -m --preview-window :follow" "$(sed -n '/== ENV/,/== STDIN/p' "$SANDBOX/fzf-dump" | sed '$d')"
 
 # picker order: MRU newest first, never-used last
 assert_eq "MRU-newest pane first" "dev:2.2: [w2] htop" "$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump" | sed 1d | head -1)"
