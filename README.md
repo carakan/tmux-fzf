@@ -330,6 +330,17 @@ If `$TMUX_FZF_CLIENT` is unset, the behavior is unchanged (most recently active 
 
 - [sainnhe/tmux-translator](https://github.com/sainnhe/tmux-translator): A translation plugin powered by popup window.
 
+# Tests
+
+`test/run.sh` runs the suite — no live tmux server and no real `fzf` needed, both are stubbed (`test/lib.sh` builds the stubs, every case runs in its own sandbox with a scrubbed environment):
+
+```sh
+test/run.sh          # everything
+test/run.sh mru      # cases matching a substring
+```
+
+Covered: `mru.sh` (append atomicity under concurrency, prune dedupe/dead/cap, ordering), `.envs` (geometry + `FZF_DEFAULT_OPTS` construction, compact detection, preview arrays), `pane.sh switch` end-to-end (picker order, recorded pick, exact argv/env shape), and the no-eval invariant (user-facing options must stay data, never shell input).
+
 # License
 
 Other code is distributed under [MIT](./LICENSE) && [Anti-996](./Anti-996-LICENSE).
