@@ -68,8 +68,8 @@ fi
 # unless you set TMUX_FZF_PREVIEW=0 (after which even your own --preview
 # command, if you have one, applies untouched).
 if [ "$compact_client" == "1" ]; then
-  plugin_opts="-m --info=inline"
-  plugin_opts_tail="--tmux center,96%,88% --padding=0 --footer= --no-footer-border"
+  plugin_opts="-m"
+  plugin_opts_tail="--tmux center,96%,88% --style=minimal --info=hidden --padding=0 --footer= --no-footer-border"
 else
   plugin_opts="--tmux center,62%,38% -m"
   plugin_opts_tail=""
