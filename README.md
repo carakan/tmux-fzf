@@ -155,10 +155,10 @@ set-environment -g TMUX_FZF_DIR /opt/tpm/tmux-fzf
 `main.tmux` hands the picker the geometry of the client that pressed the key — `TMUX_FZF_CLIENT_WIDTH` and `TMUX_FZF_CLIENT_HEIGHT`. The picker switches to a compact layout when **either** dimension is below a fixed threshold — 140 columns or 30 rows:
 
 ```
--m --info=inline … --tmux center,96%,88% --padding=0 --footer= --no-footer-border
+-m … --tmux center,96%,88% --style=minimal --info=hidden --padding=0 --footer= --no-footer-border
 ```
 
-with the preview pane turned off. The geometry and the chrome-strip are **appended after** your `FZF_DEFAULT_OPTS` (fzf's last-occurrence-wins), so a `--tmux`/`--popup` pin sized for a desktop window cannot shrink the popup on an 82-column phone, and padding plus the footer key-hint line — precious rows on a phone — are removed even when your own options set them. This is the one place the plugin overrides your options, because the compact layout is about usability, not preference; colors, binds and every other flag still come from you. Both dimensions matter: a phone in portrait is wide and short (Termius in portrait reports `82x42`), while a landscape phone or a short split terminal is *narrow in rows and wide in columns* — the 60 % popup then leaves a dozen usable lines. A width-only check never caught that case.
+with the preview pane turned off. The geometry and the chrome-strip are **appended after** your `FZF_DEFAULT_OPTS` (fzf's last-occurrence-wins), so a `--tmux`/`--popup` pin sized for a desktop window cannot shrink the popup on an 82-column phone, padding plus the footer key-hint line are removed, the finder info line is hidden, and the layout falls back to the `minimal` preset — the `full` style's boxed sections and sync rendering render poorly on phone terminals. This is the one place the plugin overrides your options, because the compact layout is about usability, not preference; colors, binds and every other flag still come from you. Both dimensions matter: a phone in portrait is wide and short (Termius in portrait reports `82x42`), while a landscape phone or a short split terminal is *narrow in rows and wide in columns* — the 60 % popup then leaves a dozen usable lines. A width-only check never caught that case.
 
 The geometry is a native fzf flag now: `--tmux center,96%,88%` asks fzf to open the popup 96 % wide and 88 % tall, and tmux resolves and clamps the percentages itself — the popup chrome, positioning and clamping are tmux's job.
 

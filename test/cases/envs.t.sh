@@ -30,7 +30,7 @@ out=$(bash -c '
     source "'"$REPO_ROOT"'/scripts/.envs"
     printf "%s\narr:%d" "$FZF_DEFAULT_OPTS" "${#TMUX_FZF_PREVIEW_OPTIONS[@]}"')
 assert_eq "compact geometry and chrome win after user pins" \
-    "-m --info=inline --padding=1,2 --footer=hi --popup=center,60%,60% --tmux center,96%,88% --padding=0 --footer= --no-footer-border
+    "-m --padding=1,2 --footer=hi --popup=center,60%,60% --tmux center,96%,88% --style=minimal --info=hidden --padding=0 --footer= --no-footer-border
 arr:0" "$out"
 
 # A real phone: Termius portrait reports 82x42 — width alone makes it compact
