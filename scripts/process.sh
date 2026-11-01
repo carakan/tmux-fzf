@@ -34,7 +34,11 @@ _kill() { #{{{ _kill SIG PID USER
     fi
 } #}}}
 if [[ "$action" == "display" ]]; then
-    if [[ "$(uname)" == "Linux" ]]; then
+    # htop takes -p on both Linux and macOS; only the top fallback needs the
+    # platform-specific flag (Linux: -p, BSD/macOS: -pid).
+    if [ -x "$(command -v htop)" ]; then
+        tmux split-window -v -l 50% -b -c '#{pane_current_path}' "htop -p $pid"
+    elif [[ "$(uname)" == "Linux" ]]; then
         tmux split-window -v -l 50% -b -c '#{pane_current_path}' "top -p $pid"
     else
         tmux split-window -v -l 50% -b -c '#{pane_current_path}' "top -pid $pid"
