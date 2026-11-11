@@ -15,7 +15,7 @@ if [[ -z "$TMUX_FZF_PANE_FORMAT" ]]; then
     # (shrunk fish-style by default, see TMUX_FZF_PANE_PATH_STYLE in the
     # README) plus the state flags. TMUX_FZF_PANE_FORMAT replaces this detail
     # wholesale (tree, status glyph and preview still wrap it).
-    FMT='#{pane_current_command} · #{pane_current_path}#{?pane_active, ●,}#{?window_zoomed_flag, ⤢,}'
+    FMT='#{pane_current_command} · #{pane_current_path}#{?pane_active, ●,}#{?window_zoomed_flag, 󰩨,}'
 else
     FMT="$TMUX_FZF_PANE_FORMAT"
 fi
@@ -54,10 +54,10 @@ dir_shrink='
         return tail
     }
     # state flags render inside the dim detail, so each gets its own color
-    # block: ● active = bold green, ⤢ zoomed = bold magenta
+    # block: ● active = bold green, 󰩨 zoomed = bold magenta
     function colorize(tail) {
         gsub(/●/, ESC "[1;32m●" rst, tail)
-        gsub(/⤢/, ESC "[1;35m⤢" rst, tail)
+        gsub(/󰩨/, ESC "[1;35m󰩨" rst, tail)
         return tail
     }
     BEGIN {

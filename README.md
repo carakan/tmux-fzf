@@ -310,10 +310,10 @@ For some reasons, you may want to customize format of panes, windows, sessions l
 
 `TMUX_FZF_PANE_FORMAT`   `TMUX_FZF_WINDOW_FORMAT`   `TMUX_FZF_SESSION_FORMAT`
 
-For example, the pane tree's detail line comes from `TMUX_FZF_PANE_FORMAT`; the default shows command, the working directory shrunk fish-style, and the state flags (`claude · ~/d/p/authservice ●⤢`) — the tree prepends the status glyph and uses the command as the pane's name. To customize it:
+For example, the pane tree's detail line comes from `TMUX_FZF_PANE_FORMAT`; the default shows command, the working directory shrunk fish-style, and the state flags (`claude · ~/d/p/authservice ●󰩨`) — the tree prepends the status glyph and uses the command as the pane's name. To customize it:
 
 ```tmux
-TMUX_FZF_PANE_FORMAT="#{pane_current_command} · #{pane_current_path} [#{pane_width}x#{pane_height}] [history #{history_size}/#{history_limit}] #{?pane_active,●,}#{?window_zoomed_flag,⤢,}"
+TMUX_FZF_PANE_FORMAT="#{pane_current_command} · #{pane_current_path} [#{pane_width}x#{pane_height}] [history #{history_size}/#{history_limit}] #{?pane_active,●,}#{?window_zoomed_flag,󰩨,}"
 ```
 
 The tree strips the leading `command · ` prefix for its name slot, so keep the command first if you want clean tree lines. Wherever the raw `#{pane_current_path}` appears in that detail, it is shrunk according to `TMUX_FZF_PANE_PATH_STYLE`:
@@ -324,7 +324,7 @@ The tree strips the leading `command · ` prefix for its name slot, so keep the 
 | `basename` | `tmux-fzf` — the last component only |
 | `full` | `~/dev/personal/tmux-fzf` — verbatim, with `~` for `$HOME` |
 
-The state flags render in their own colors inside the dim detail: `●` bold green when the pane is active, `⤢` bold magenta when its window is zoomed.
+The state flags render in their own colors inside the dim detail: `●` bold green when the pane is active, `󰩨` bold magenta when its window is zoomed.
 
 Similarly, `TMUX_FZF_WINDOW_FORMAT` and `TMUX_FZF_SESSION_FORMAT` can also be handled in this way.
 

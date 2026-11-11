@@ -82,11 +82,11 @@ assert_eq "subprocess line targets its pane" "dev:2.3" "$(printf '%s' "$child" |
 line=$(printf '%s\n' "$STDIN" | grep 'ops-wt')
 assert_contains "wrapper agent shown under its own name" "claude $(printf '\033[32m✓\033[0m')" "$line"
 # state flags carry their own colors inside the dim detail: active ● bold
-# green, zoomed ⤢ bold magenta
+# green, zoomed 󰩨 bold magenta
 line=$(printf '%s\n' "$STDIN" | grep 'w3')
 assert_contains "active flag colored green" "$(printf '\033[1;32m●\033[0m')" "$line"
 line=$(printf '%s\n' "$STDIN" | grep 'ops-wt')
-assert_contains "zoomed flag colored magenta" "$(printf '\033[1;35m⤢\033[0m')" "$line"
+assert_contains "zoomed flag colored magenta" "$(printf '\033[1;35m󰩨\033[0m')" "$line"
 
 printf '%s\n' "$STDIN" | grep -q 'vim -O notes.md' \
     && { TESTS_FAIL=$((TESTS_FAIL+1)); echo "  FAIL non-agent pane subprocess leaked"; } \
