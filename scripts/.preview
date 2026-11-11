@@ -1,3 +1,12 @@
 #!/usr/bin/env bash
-
-[ "$1" != '[cancel]' ] && [ "$1" != '[current]' ] && echo $1 | sed 's/: .*$//' | xargs -I{} tmux capture-pane -ep -t {}
+# Preview key extraction. The pane tree lines carry their jump target as
+# field 1 before the unit separator; every other picker and the flat pane
+# lists keep the historical "S:W.P: display" shape parsed by sed.
+sep=$'\x1f'
+if [[ "$1" == *"$sep"* ]]; then
+    target="${1%%"$sep"*}"
+else
+    target=$(printf '%s' "$1" | sed 's/: .*$//')
+fi
+[ "$target" == '[cancel]' ] || [ "$target" == '[current]' ] \
+    || printf '%s' "$target" | xargs -I{} tmux capture-pane -ep -t {}

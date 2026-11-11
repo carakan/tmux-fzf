@@ -4,7 +4,7 @@
 
 - Manage sessions (switch, new, rename, detach, kill).
 - Manage windows (switch, link, move, swap, rename, kill).
-- Manage panes (switch, break, join, swap, layout, kill, resize).
+- Manage panes (switch, break, join, swap, layout, kill, resize). Switch/join show a session ▸ window › pane tree with per-pane agent status.
 - Search commands and append to command prompt.
 - Search key bindings and execute.
 - Search clipboard history and paste to current window.
@@ -164,15 +164,30 @@ The geometry is a native fzf flag now: `--tmux center,96%,88%` asks fzf to open 
 
 On desktop clients your options keep winning: `fzf` applies `FZF_DEFAULT_OPTS` with last-occurrence-wins, so a `--tmux` flag you add there replaces the plugin's geometry. Only the compact layout overrides you — that is its job.
 
+## Agent status pane tree
+
+`prefix` + pane **switch** (and **join**) shows every pane as a tree — session ▸ window › pane — instead of a flat list. Each line carries its jump target hidden from display, so picking a session or window line jumps to its most recently used pane and the preview still shows live pane content.
+
+States are inferred when the picker opens, from the pane itself — no daemon, no hooks:
+
+| glyph | meaning |
+| --- | --- |
+| `⣽` yellow | coding agent (claude, codex, gemini, aider, copilot, cursor-agent, opencode, crush, amp, qwen, droid, omp) whose last output lines contain a spinner or `esc to interrupt` — running |
+| `✓` green | agent pane with no activity signs — turn done, waiting for you |
+| `✝` red | dead pane (from tmux's `pane_dead`) |
+| *(none)* | plain pane — no state is invented for it |
+
+Sessions show aggregate counts (`⣽1 ✓2`); single-pane windows collapse into one line; lines are styled with bold sessions and italic windows, searchable like any fzf list.
+
 ## MRU pane ordering
 
-`prefix` + pane switch lists panes **most-recently-used first**, then never-used panes in tmux order, so the list reads like Alt-Tab.
+The tree is ordered by **hierarchical MRU**: the most recently used pane pulls its window to the top of its session and its session to the top of the list; inside a group, index order rules. The list reads like Alt-Tab at every level.
 
 Recording happens in `after-select-pane` and `after-select-window` hooks installed by `main.tmux`, which means every switch counts — picker picks, vim keys, clicks, window jumps — not only picks made in the picker. A record is a single append to `${XDG_CACHE_HOME:-~/.cache}/tmux-fzf-pane-mru` (atomic, no locking), keyed by `pane_id` (`%N`): `session:window.pane` indices shift when windows close, so an index-keyed entry would eventually point at a different pane. Entries for dead panes are pruned when the picker opens.
 
 | variable | default | meaning |
 | --- | --- | --- |
-| `TMUX_FZF_MRU` | `1` | `0` restores plain index order and stops recording |
+| `TMUX_FZF_MRU` | `1` | `0` restores plain list order and stops recording |
 
 Inspect or reset the order with the helper:
 
@@ -292,11 +307,13 @@ For some reasons, you may want to customize format of panes, windows, sessions l
 
 `TMUX_FZF_PANE_FORMAT`   `TMUX_FZF_WINDOW_FORMAT`   `TMUX_FZF_SESSION_FORMAT`
 
-For example, `tmux list-panes -a` doesn't show running program and window name by default. If you want to show running program and window name, add something like this to `~/.tmux.conf`
+For example, the pane tree's detail line comes from `TMUX_FZF_PANE_FORMAT`; the default shows command, path, size and state flags (the tree prepends the agent status glyph and uses the command as the pane's name). To customize it:
 
 ```tmux
-TMUX_FZF_PANE_FORMAT="[#{window_name}] #{pane_current_command}  [#{pane_width}x#{pane_height}] [history #{history_size}/#{history_limit}, #{history_bytes} bytes] #{?pane_active,[active],[inactive]}"
+TMUX_FZF_PANE_FORMAT="#{pane_current_command} · #{pane_current_path} [#{pane_width}x#{pane_height}] [history #{history_size}/#{history_limit}] #{?pane_active,●,}#{?window_zoomed_flag,⤢,}"
 ```
+
+The tree strips the leading `command · ` prefix for its name slot, so keep the command first if you want clean tree lines.
 
 Similarly, `TMUX_FZF_WINDOW_FORMAT` and `TMUX_FZF_SESSION_FORMAT` can also be handled in this way.
 

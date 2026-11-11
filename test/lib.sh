@@ -42,43 +42,61 @@ assert_contains() { # assert_contains <name> <needle> <haystack>
     esac
 }
 
-stub_tmux() { # stub_tmux — panes for the pane picker (ids %0 %1 %2, panes dev:2.x)
+stub_tmux() { # stub_tmux — panes for the pane picker (rich rows; ids %0-%5,
+              # sessions dev:2.x and ops:0.x)
     cat > "$STUB_BIN/tmux" <<STUB
 #!/usr/bin/env bash
 sep=$'\x1f'
 case "\$1" in
   -V) echo "tmux 3.5a" ;;
   display-message)
-      if [[ "\$*" == *zoomed_flag* ]]; then echo 0
-      else echo "dev:2.1: vim"; fi ;;
+      case "\$3" in
+        *zoomed_flag*) echo 0 ;;
+        '#S:#{window_index}.#{pane_index}') echo "dev:2.1" ;;
+        *) echo "dev:2.1: vim" ;;
+      esac ;;
   list-panes)
       if [ "\$4" = '#{pane_id}' ]; then
-          printf '%%0\n%%1\n%%2\n'
+          printf '%%0\n%%1\n%%2\n%%3\n%%5\n%%4\n'
       else
-          printf '%%1%sdev:2.1%s[w1] vim\n' "\$sep" "\$sep"
-          printf '%%0%sdev:2.0%s[w0] zsh\n' "\$sep" "\$sep"
-          printf '%%2%sdev:2.2%s[w2] htop\n' "\$sep" "\$sep"
+          printf '%%1%sdev:2.1%sdev%s1%sw1%svim%s0%svim · ~/w1 [80x24]\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%0%sdev:2.0%sdev%s0%sw0%szsh%s0%szsh · ~/w0 [80x24]\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%2%sdev:2.2%sdev%s2%sw2%shtop%s0%shtop · ~/w2 [80x24]\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%3%sdev:2.3%sdev%s3%sw3%sclaude%s0%sclaude · ~/w3 [80x24]\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%5%sops:0.1%sops%s0%sw0%sclaude%s0%sclaude · ~/ops-wt [80x24]\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%4%sops:0.0%sops%s0%sw0%szsh%s0%szsh · ~/ops [80x24]\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
       fi ;;
+  capture-pane)
+      case "\$*" in
+        *%3*) printf '⣽ thinking\nesc to interrupt\n' ;;
+        *-ep*) echo "CAPTURED:\$*" ;;
+        *) : ;;
+      esac ;;
 esac
 exit 0
 STUB
     chmod +x "$STUB_BIN/tmux"
 }
 
-# stub_fzf_pick <dumpfile> — fzf that logs argv, FZF_DEFAULT_OPTS and stdin,
-# then picks the first line (the MRU-top entry for pane.sh switch).
+# stub_fzf_pick <dumpfile> [pick-line] — fzf that logs argv, FZF_DEFAULT_OPTS
+# and stdin, then returns the Nth line (default 1) like a real pick. The stdin
+# copy is needed because a plain pipe cannot be read twice: cat draining the
+# dump would leave head at EOF and the picker would never record a pick.
 stub_fzf_pick() {
     cat > "$STUB_BIN/fzf" <<STUB
 #!/usr/bin/env bash
+stdin_copy="${TMPDIR:-/tmp}/fzf-stub-stdin.$$"
+cat > "\$stdin_copy"
 {
     echo "== ARGV"
     for a in "\$@"; do echo "  <\$a>"; done
     echo "== ENV"
     echo "  <\${FZF_DEFAULT_OPTS-UNSET}>"
     echo "== STDIN"
-    cat
+    cat "\$stdin_copy"
 } > "$1"
-head -1
+sed -n "${2:-1}p" "\$stdin_copy"
+rm -f "\$stdin_copy"
 STUB
     chmod +x "$STUB_BIN/fzf"
 }

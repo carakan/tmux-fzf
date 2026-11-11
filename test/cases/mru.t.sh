@@ -21,8 +21,8 @@ assert_eq "24 concurrent appends all landed" "27" "$n"
 # prune keeps exactly the live panes, deduped; exact order is racy here
 stub_tmux
 "$MRU" prune
-assert_eq "prune keeps the live set" $'%0\n%1\n%2' "$(cat "$FILE" | sort)"
-assert_eq "prune dedupes to one line per pane" "3" "$(wc -l < "$FILE" | tr -d ' ')"
+assert_eq "prune keeps the live set" $'%0\n%1\n%2\n%3\n%4\n%5' "$(cat "$FILE" | sort)"
+assert_eq "prune dedupes to one line per pane" "6" "$(wc -l < "$FILE" | tr -d ' ')"
 
 # cap: append 250 more live ids; prune keeps the newest 200
 for i in $(seq 250); do printf '%%x%03d\n' "$i" >> "$FILE"; done
