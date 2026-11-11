@@ -22,9 +22,9 @@ fi
 
 # One list-panes pass carries everything the tree needs: pane_id (stable MRU
 # key — S:W.P indices shift when windows close), the S:W.P target, session,
-# window index, window name, current command, dead flag, the display detail
-# and the raw working directory for fish-style shrinking.
-panes_raw=$(tmux list-panes -a -F "#{pane_id}${sep}#S:#{window_index}.#{pane_index}${sep}#S${sep}#{window_index}${sep}#{window_name}${sep}#{pane_current_command}${sep}#{pane_dead}${sep}${FMT}${sep}#{pane_current_path}")
+# window index, window name, current command, dead flag, the display detail,
+# the raw working directory and the pane's process id for subprocess listing.
+panes_raw=$(tmux list-panes -a -F "#{pane_id}${sep}#S:#{window_index}.#{pane_index}${sep}#S${sep}#{window_index}${sep}#{window_name}${sep}#{pane_current_command}${sep}#{pane_dead}${sep}${FMT}${sep}#{pane_current_path}${sep}#{pane_pid}")
 
 # awk shape for both lists below: shorten every directory component but the
 # last to its first character ("fish" — /u/s/wt), keep the full path ("full"),
@@ -71,8 +71,59 @@ panes=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" "$dir_shrink"'
 # current command is a known coding agent gets its last output lines
 # inspected; a spinner or "esc to interrupt" means running, anything else
 # means the agent sits idle (turn done, waiting for you). Dead panes — any
-# pane, agent or not — come straight from tmux's dead flag.
-agent_re='claude|codex|gemini|aider|copilot|cursor-agent|opencode|crush|amp|qwen|droid|omp'
+# pane, agent or not — come straight from tmux's dead flag. Agent panes are
+# found by walking the process tree: a pane is an agent pane when any
+# process under its root pid has an agent command as its executable basename
+# — or as the first argument's basename under an interpreter, so "node
+# /path/to/bin/claude" registers as claude while "man claude" never does
+# (approach ported from samleeney/tmux-agent-status agent-processes.sh).
+agent_re='claude|codex|gemini|aider|copilot|cursor-agent|opencode|crush|amp|qwen|droid|omp|pi'
+ps_tmp="$(mktemp "${TMPDIR:-/tmp}/tmux-fzf-ps.XXXXXX")"
+ps -axo pid=,ppid=,stat=,command= > "$ps_tmp" 2>/dev/null || { rm -f "$ps_tmp"; ps_tmp=""; }
+agent_roots=""
+agent_rows=""
+if [[ -n "$ps_tmp" ]]; then
+    agent_rows=$(printf '%s' "$panes_raw" | awk -v sep="$sep" -v agent_re="$agent_re" -v ps_file="$ps_tmp" '
+        function basename(s) { sub(".*/", "", s); return s }
+        BEGIN {
+            FS = sep
+            while ((getline line < ps_file) > 0) {
+                sub(/^[ \t]+/, "", line)
+                gsub(/[ \t]+/, " ", line)
+                if (index(line, " ") == 0) continue
+                pid = substr(line, 1, index(line, " ") - 1); line = substr(line, index(line, " ") + 1)
+                if (index(line, " ") == 0) continue
+                ppid = substr(line, 1, index(line, " ") - 1); rest = substr(line, index(line, " ") + 1)
+                if (index(rest, " ") == 0) continue
+                args = substr(rest, index(rest, " ") + 1)
+                ch[ppid] = ch[ppid] " " pid
+                ag[pid] = args
+            }
+            close(ps_file)
+        }
+        # iterative walk of the subtree below root — no recursion; returns
+        # the agent command name when found, "" when not
+        function subtree_agent(root,    q, qi, n, cur, arr, i, nn, a, f, k) {
+            q[1] = root; qi = 1; n = 1
+            while (qi <= n) {
+                cur = q[qi]; qi++
+                a = ag[cur]
+                if (a != "") {
+                    nn = split(a, f, " ")
+                    k = basename(f[1])
+                    if (k ~ "^(" agent_re ")$") return k
+                    if (k ~ /^(node|bun|deno|python[0-9.]*)$/ && nn >= 2 && basename(f[2]) ~ "^(" agent_re ")$") return basename(f[2])
+                }
+                nn = split(ch[cur], arr, " ")
+                for (i = 1; i <= nn; i++) if (arr[i] != "") { n++; q[n] = arr[i] }
+            }
+            return ""
+        }
+        NF >= 10 { name = subtree_agent($10); if (name != "") print $10 sep name }
+    ')
+    agent_roots="$(printf '%s\n' "$agent_rows" | cut -d"$sep" -f1 | tr '\n' ' ')"
+    export agent_names="$agent_rows"
+fi
 # tmux-agent-status cache: panes/<session>_<pane>.status holds one word
 # (working|wait|ask|done); parked/<session>_<pane>.parked and
 # wait/<session>_<pane>.wait (content: expiry epoch) override it. Resolution
@@ -82,11 +133,11 @@ tas_dir="$HOME/.cache/tmux-agent-status"
 [ -d "$tas_dir" ] || tas_dir=""
 tas_now=$(date +%s)
 statuses=""
-while IFS="$sep" read -r pid _ptarget _psess _pwin _pwinname pcmd pdead _pdetail; do
+while IFS="$sep" read -r pid _ptarget _psess _pwin _pwinname pcmd pdead _pdetail _ppath _proot; do
     state=""
     if [[ "$pdead" == "1" ]]; then
         state=dead
-    elif [[ "$pcmd" =~ ^($agent_re)$ || -n "$tas_dir" && -f "$tas_dir/panes/${_psess}_${pid}.agent" ]]; then
+    elif [[ " $agent_roots " == *" ${_proot} "* || -n "$tas_dir" && -f "$tas_dir/panes/${_psess}_${pid}.agent" ]]; then
         if [[ -n "$tas_dir" ]]; then
             if [[ -f "$tas_dir/parked/${_psess}_${pid}.parked" ]]; then
                 state=parked
@@ -123,6 +174,7 @@ while IFS="$sep" read -r pid _ptarget _psess _pwin _pwinname pcmd pdead _pdetail
     fi
     [ -n "$state" ] && statuses+="${pid}${sep}${state}"$'\n'
 done <<< "$panes_raw"
+export pane_statuses="$statuses"
 
 mru_file=""
 if [ "${TMUX_FZF_MRU:-1}" != "0" ] && [ -x "$CURRENT_DIR/mru.sh" ]; then
@@ -139,11 +191,11 @@ fi
 # (--with-nth), so tree decoration and ANSI styling never leak into the
 # switch handlers or the preview — the pick handler reads field 1, the
 # preview captures field 1.
-export pane_statuses="$statuses"
 tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
     -v mru_file="$mru_file" \
     -v excl_current=$([[ -z "$TMUX_FZF_SWITCH_CURRENT" ]] && echo 1 || echo 0) \
-    -v cur="$current_pane" "$dir_shrink"'
+    -v cur="$current_pane" \
+    -v ps_file="$ps_tmp" "$dir_shrink"'
 
     BEGIN {
         FS = sep
@@ -153,6 +205,30 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
         ask_c = ESC "[1;31m"; wait_c = ESC "[36m"; parked_c = ESC "[2m"
         run_g = run_c "⣽" rst; idle_g = idle_c "✓" rst; dead_g = dead_c "✝" rst
         ask_g = ask_c "❓" rst; wait_g = wait_c "⏳" rst; parked_g = parked_c "⏸" rst
+        # ps snapshot: pid, ppid, stat, command — children grouped by root pid
+        # (ps sorts by pid, so each group keeps ascending order; at most one
+        # line per pid: a later duplicate child wins)
+        if (ps_file != "") {
+            while ((getline line < ps_file) > 0) {
+                sub(/^[ \t]+/, "", line)
+                gsub(/[ \t]+/, " ", line)   # ps aligns columns; collapse runs
+                if (index(line, " ") == 0) continue
+                pid1 = substr(line, 1, index(line, " ") - 1); line = substr(line, index(line, " ") + 1)
+                if (index(line, " ") == 0) continue
+                ppid1 = substr(line, 1, index(line, " ") - 1); line = substr(line, index(line, " ") + 1)
+                if (index(line, " ") == 0) continue
+                stat1 = substr(line, 1, index(line, " ") - 1); cmd1 = substr(line, index(line, " ") + 1)
+                if (ppid1 + 0 > 1 && pid1 + 0 > 1) kids_of[ppid1] = kids_of[ppid1] pid1 sep stat1 sep cmd1 "\n"
+            }
+            close(ps_file)
+        }
+        # wrapper-detected agents: pane root pid → the agent command name the
+        # pane is displayed under (claude for node /path/to/bin/claude)
+        ns2 = split(ENVIRON["agent_names"], AN, "\n")
+        for (i = 1; i <= ns2; i++) {
+            p = index(AN[i], sep)
+            if (p > 1) aname[substr(AN[i], 1, p - 1)] = substr(AN[i], p + 1)
+        }
         ns = split(ENVIRON["pane_statuses"], S, "\n")
         for (i = 1; i <= ns; i++) {
             p = index(S[i], sep)
@@ -167,6 +243,7 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
     }
     NF >= 8 {
         id = $1; tgt = $2; ses = $3; widx = $4 + 0; wnm = $5; cmd = $6; det = $8
+        if ($10 in aname) cmd = aname[$10]
         if (excl_current && tgt == cur) next
         r = (id in rank) ? rank[id] : 1000000 + ++fresh
         st = (id in stat) ? stat[id] : ""
@@ -187,11 +264,38 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
         tail = restyle(tail, $9)
         b[id] = cmd (g != "" ? " " g : "") " " dim "· " tail rst
         pn[id] = r; pt[id] = tgt; pw[id] = wk
+        kid[id] = (st != "" && st != "dead") ? $10 : ""
         wpanes[wk] = wpanes[wk] (wpanes[wk] != "" ? "\n" : "") id
         if (!(wk in wseen)) { wseen[wk] = 1; wslist[++m] = wk; wses[wk] = ses }
     }
     function wkey(wk) { return sprintf("%012d|%06d", wrank[wk], wnum[wk]) }
     function pkey(id) { return sprintf("%012d|%s", pn[id], pt[id]) }
+    # descendants of an agent pane, walked breadth-first from the ps snapshot;
+    # each line keeps the pane jump target so picking a subprocess lands in
+    # that pane. Cap: first three plus a count line.
+    function print_kids(tgt, root, indent,    q, dp, qi, n, cur, arr, i, nn, p, kpid, kstat, kcmd, kcs, kg, total, show, pad) {
+        if (root == "" || !(root in kids_of)) return
+        q[1] = root; dp[1] = 1; qi = 1; n = 1; total = 0
+        while (qi <= n) {
+            cur = q[qi]; cdp = dp[qi]; qi++
+            nn = split(kids_of[cur], arr, "\n")
+            for (i = 1; i <= nn; i++) {
+                if (arr[i] == "") continue
+                p = index(arr[i], sep); kpid = substr(arr[i], 1, p - 1); arr[i] = substr(arr[i], p + 1)
+                p = index(arr[i], sep); kstat = substr(arr[i], 1, p - 1); kcmd = substr(arr[i], p + 1)
+                total++
+                if (total <= 3) {
+                    kcs = substr(kstat, 1, 1)
+                    kg = kcs == "Z" ? dead_c "✝" : kcs == "R" ? run_c "▸" : kcs == "T" ? parked_c "⏸" : dim "·"
+                    show = substr(kcmd, 1, 56)
+                    pad = (cdp == 1) ? "    " : "      "
+                    print tgt sep indent pad dim "└" rst " " kg rst " " dim show (length(kcmd) > 56 ? "…" : "") rst
+                }
+                n++; q[n] = kpid; dp[n] = cdp + 1
+            }
+        }
+        if (total > 3) print tgt sep indent "    " dim "└ +" total - 3 " subprocesses" rst
+    }
     END {
         ns = 0
         for (s in srank) slist[++ns] = s
@@ -217,17 +321,20 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
                 wb = (wi == nw) ? "└" : "├"
                 if (np == 1) {
                     print wtar[wk] sep "  " wb " " ital wnum[wk] " " wn[wk] rst dim " ─ " rst b[plist[1]]
+                    print_kids(pt[plist[1]], kid[plist[1]], "  ")
                 } else {
                     print wtar[wk] sep "  " wb " " ital wnum[wk] " " wn[wk] rst
                     for (pi = 1; pi <= np; pi++) {
                         pb = (pi == np) ? "└" : "├"
                         prefix = (wi == nw) ? "      " : "  │   "
                         print pt[plist[pi]] sep prefix pb " " b[plist[pi]]
+                        print_kids(pt[plist[pi]], kid[plist[pi]], prefix)
                     }
                 }
             }
         }
     }')
+rm -f "$ps_tmp"
 tree="$tree"$'\n[cancel]'"$sep"'[cancel]'
 
 if [[ -z "$1" ]]; then

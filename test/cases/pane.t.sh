@@ -38,11 +38,17 @@ STDIN=$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump" | sed 1d)
 # Tree: targets of the displayed lines, in order. dev leads (its %2 is the
 # most-recent pane); inside dev the windows follow pane recency (w2 %2, w0
 # %0, w3 never-used); the current pane's window (w1) is hidden by default;
-# ops trails. Single-pane windows merge into one line, ops w0 splits.
+# ops trails. Single-pane windows merge into one line, ops w0 splits. The
+# agent pane's subprocess lines sit under its merged window line, keeping
+# the pane as their target.
 assert_eq "hierarchical MRU target order" \
 "dev:2.2
 dev:2.2
 dev:2.0
+dev:2.3
+dev:2.3
+dev:2.3
+dev:2.3
 dev:2.3
 ops:0.1
 ops:0.1
@@ -62,6 +68,26 @@ line=$(printf '%s\n' "$STDIN" | grep 'htop')
     && { TESTS_PASS=$((TESTS_PASS+1)); echo "  ok   non-agent pane has no state glyph"; } \
     || { TESTS_FAIL=$((TESTS_FAIL+1)); echo "  FAIL non-agent pane got a state glyph"; }
 
+# Subprocesses of the agent pane, listed under it with status marks: sleeping
+# (dim ·), running (▸), a zombie (✝); capped at three plus a count line. The
+# non-agent zsh pane runs a child too — it must not be listed.
+assert_contains "sleeping subprocess listed" "$(printf '\033[2m└\033[0m \033[2m·\033[0m \033[2mbash -c rg -n pattern src\033[0m')" "$STDIN"
+assert_contains "running subprocess marked busy" "$(printf '\033[1;33m▸\033[0m \033[2mnode server.js\033[0m')" "$STDIN"
+assert_contains "zombie subprocess marked dead" "$(printf '\033[2;31m✝\033[0m \033[2m(gzip)\033[0m')" "$STDIN"
+assert_contains "subprocess list capped with count" "└ +4 subprocesses" "$STDIN"
+child=$(printf '%s\n' "$STDIN" | grep 'node server.js' | head -1)
+assert_eq "subprocess line targets its pane" "dev:2.3" "$(printf '%s' "$child" | cut -d"$sep" -f1)"
+# %5's tmux command is node — the interpreter rule names the pane claude and
+# still infers idle from its (empty-output) capture
+line=$(printf '%s\n' "$STDIN" | grep 'ops-wt')
+assert_contains "wrapper agent shown under its own name" "claude $(printf '\033[32m✓\033[0m')" "$line"
+printf '%s\n' "$STDIN" | grep -q 'vim -O notes.md' \
+    && { TESTS_FAIL=$((TESTS_FAIL+1)); echo "  FAIL non-agent pane subprocess leaked"; } \
+    || { TESTS_PASS=$((TESTS_PASS+1)); echo "  ok   non-agent subprocess suppressed"; }
+printf '%s\n' "$STDIN" | grep -q 'tail -f /var/log' \
+    && { TESTS_FAIL=$((TESTS_FAIL+1)); echo "  FAIL subprocess cap not applied"; } \
+    || { TESTS_PASS=$((TESTS_PASS+1)); echo "  ok   subprocesses beyond cap hidden"; }
+
 # The pick (fzf returned line 4 = dev:2.3) was recorded as its pane_id
 assert_eq "pick recorded" "%3" "$(tail -1 "$XDG_CACHE_HOME/tmux-fzf-pane-mru")"
 
@@ -73,6 +99,10 @@ assert_eq "MRU=0 restores list order" \
 "dev:2.0
 dev:2.0
 dev:2.2
+dev:2.3
+dev:2.3
+dev:2.3
+dev:2.3
 dev:2.3
 ops:0.1
 ops:0.1
@@ -90,6 +120,10 @@ assert_eq "SWITCH_CURRENT re-includes the current pane" \
 dev:2.2
 dev:2.0
 dev:2.1
+dev:2.3
+dev:2.3
+dev:2.3
+dev:2.3
 dev:2.3
 ops:0.1
 ops:0.1

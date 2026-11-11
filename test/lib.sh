@@ -59,12 +59,12 @@ case "\$1" in
       if [ "\$4" = '#{pane_id}' ]; then
           printf '%%0\n%%1\n%%2\n%%3\n%%5\n%%4\n'
       else
-          printf '%%1%sdev:2.1%sdev%s1%sw1%svim%s0%svim · ~/w1 [80x24]%s~/w1\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
-          printf '%%0%sdev:2.0%sdev%s0%sw0%szsh%s0%szsh · ~/w0 [80x24]%s~/w0\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
-          printf '%%2%sdev:2.2%sdev%s2%sw2%shtop%s0%shtop · /Users/carakan/dev/authservice [80x24]%s/Users/carakan/dev/authservice\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
-          printf '%%3%sdev:2.3%sdev%s3%sw3%sclaude%s0%sclaude · ~/w3 [80x24]%s~/w3\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
-          printf '%%5%sops:0.1%sops%s0%sw0%sclaude%s0%sclaude · ~/ops-wt [80x24]%s~/ops-wt\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
-          printf '%%4%sops:0.0%sops%s0%sw0%szsh%s0%szsh · ~/ops [80x24]%s~/ops\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%1%sdev:2.1%sdev%s1%sw1%svim%s0%svim · ~/w1 [80x24]%s~/w1%s5011\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%0%sdev:2.0%sdev%s0%sw0%szsh%s0%szsh · ~/w0 [80x24]%s~/w0%s5012\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%2%sdev:2.2%sdev%s2%sw2%shtop%s0%shtop · /Users/carakan/dev/authservice [80x24]%s/Users/carakan/dev/authservice%s5013\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%3%sdev:2.3%sdev%s3%sw3%sclaude%s0%sclaude · ~/w3 [80x24]%s~/w3%s5014\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%5%sops:0.1%sops%s0%sw0%snode%s0%sclaude · ~/ops-wt [80x24]%s~/ops-wt%s5015\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%4%sops:0.0%sops%s0%sw0%szsh%s0%szsh · ~/ops [80x24]%s~/ops%s5016\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
       fi ;;
   capture-pane)
       case "\$*" in
@@ -75,7 +75,26 @@ case "\$1" in
 esac
 exit 0
 STUB
-    chmod +x "$STUB_BIN/tmux"
+    # ps fixture: claude pane %3 (pid 5014) runs five direct subprocesses plus
+    # grandchildren (bash→rg, node→esbuild); pane %5's root is a node wrapper
+    # running claude — the interpreter rule must still mark it agent and the
+    # tree must show it under the claude name; the non-agent zsh pane (5012)
+    # has a child that must NOT be listed
+    cat > "$STUB_BIN/ps" <<'PSTUB'
+#!/usr/bin/env bash
+printf '  5015  4800 S node /usr/local/bin/claude --resume\n'
+printf '  5014  4801 S claude --resume\n'
+printf '  5021  5014 S bash -c rg -n pattern src\n'
+printf '  5022  5014 R node server.js\n'
+printf '  5023  5014 Z (gzip)\n'
+printf '  5024  5014 S tail -f /var/log/system.log\n'
+printf '  5025  5014 S sleep 30\n'
+printf '  5031  5012 S vim -O notes.md\n'
+printf '  5041  5021 S rg -n pattern src\n'
+printf '  5042  5022 R esbuild --watch\n'
+printf '    1     0 S /sbin/launchd\n'
+PSTUB
+    chmod +x "$STUB_BIN/tmux" "$STUB_BIN/ps"
 }
 
 # stub_fzf_pick <dumpfile> [pick-line] — fzf that logs argv, FZF_DEFAULT_OPTS
