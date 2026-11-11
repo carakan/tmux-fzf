@@ -62,8 +62,8 @@ case "\$1" in
           printf '%%1%sdev:2.1%sdev%s1%sw1%svim%s0%svim · ~/w1 [80x24]%s~/w1%s5011\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
           printf '%%0%sdev:2.0%sdev%s0%sw0%szsh%s0%szsh · ~/w0 [80x24]%s~/w0%s5012\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
           printf '%%2%sdev:2.2%sdev%s2%sw2%shtop%s0%shtop · /Users/carakan/dev/authservice [80x24]%s/Users/carakan/dev/authservice%s5013\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
-          printf '%%3%sdev:2.3%sdev%s3%sw3%sclaude%s0%sclaude · ~/w3 [80x24]%s~/w3%s5014\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
-          printf '%%5%sops:0.1%sops%s0%sw0%snode%s0%sclaude · ~/ops-wt [80x24]%s~/ops-wt%s5015\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%3%sdev:2.3%sdev%s3%sw3%sclaude%s0%sclaude · ~/w3 [80x24] ●%s~/w3%s5014\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%5%sops:0.1%sops%s0%sw0%snode%s0%sclaude · ~/ops-wt [80x24] ⤢%s~/ops-wt%s5015\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
           printf '%%4%sops:0.0%sops%s0%sw0%szsh%s0%szsh · ~/ops [80x24]%s~/ops%s5016\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
       fi ;;
   capture-pane)

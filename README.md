@@ -324,6 +324,8 @@ The tree strips the leading `command · ` prefix for its name slot, so keep the 
 | `basename` | `tmux-fzf` — the last component only |
 | `full` | `~/dev/personal/tmux-fzf` — verbatim, with `~` for `$HOME` |
 
+The state flags render in their own colors inside the dim detail: `●` bold green when the pane is active, `⤢` bold magenta when its window is zoomed.
+
 Similarly, `TMUX_FZF_WINDOW_FORMAT` and `TMUX_FZF_SESSION_FORMAT` can also be handled in this way.
 
 For more information, check "FORMATS" section in tmux manual.

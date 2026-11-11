@@ -53,7 +53,15 @@ dir_shrink='
         }
         return tail
     }
+    # state flags render inside the dim detail, so each gets its own color
+    # block: ● active = bold green, ⤢ zoomed = bold magenta
+    function colorize(tail) {
+        gsub(/●/, ESC "[1;32m●" rst, tail)
+        gsub(/⤢/, ESC "[1;35m⤢" rst, tail)
+        return tail
+    }
     BEGIN {
+        ESC = sprintf("%c", 27); rst = ESC "[0m"
         style = ENVIRON["TMUX_FZF_PANE_PATH_STYLE"]
         if (style != "fish" && style != "full" && style != "basename") style = "fish"
     }'
@@ -62,7 +70,7 @@ dir_shrink='
 # .preview and the sed-based handlers already parse (only the display path is
 # shrunk; handlers read what is left of ": ").
 panes=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" "$dir_shrink"'
-    BEGIN { FS = sep } NF >= 8 { print $2 ": " restyle($8, $9) }')
+    BEGIN { FS = sep } NF >= 8 { print $2 ": " colorize(restyle($8, $9)) }')
 
 # Agent status — exact first, inferred otherwise, no daemon of our own. When
 # the tmux-agent-status plugin tracks a pane, its hook-written cache files
@@ -262,6 +270,7 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
         p = index(tail, " · ")
         if (p > 1 && substr(tail, 1, p - 1) == cmd) tail = substr(tail, p + 4)
         tail = restyle(tail, $9)
+        tail = colorize(tail)
         b[id] = cmd (g != "" ? " " g : "") " " dim "· " tail rst
         pn[id] = r; pt[id] = tgt; pw[id] = wk
         kid[id] = (st != "" && st != "dead") ? $10 : ""
