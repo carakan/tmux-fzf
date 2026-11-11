@@ -97,6 +97,56 @@ ops:0.1
 ops:0.0
 [cancel]" "$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump-3" | sed 1d | cut -d"$sep" -f1)"
 
+# tmux-agent-status sidecar: when its hook-written cache tracks a pane, the
+# exact state replaces our capture inference. ask and parked never come from
+# inference, so their glyphs prove the sidecar path; "done" on a pane whose
+# captured output shows a spinner proves exactness beats heuristics.
+# pane.sh reads $HOME/.cache/tmux-agent-status — point HOME at the sandbox and
+# build the fixture at the path that resolution hits
+TAS="$SANDBOX/.cache/tmux-agent-status"
+mkdir -p "$TAS/panes" "$TAS/parked" "$TAS/wait"
+stub_fzf_pick "$SANDBOX/fzf-dump-5"
+printf 'ask\n' > "$TAS/panes/ops_%5.status"    # %5's capture has no spinner, but ask is exact
+printf 'done\n' > "$TAS/panes/dev_%3.status"   # %3's capture shows a spinner - exact state wins
+HOME="$SANDBOX" TMUX_FZF_MRU=0 "$PWD/scripts/pane.sh" switch >/dev/null 2>&1
+STDIN5=$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump-5" | sed 1d)
+assert_contains "sidecar ask state rendered" "claude $(printf '\033[1;31m❓\033[0m')" "$STDIN5"
+assert_contains "ops session counts the ask" "$(printf '\033[1m▸ ops\033[0m \033[1;31m❓1\033[0m')" "$STDIN5"
+line=$(printf '%s\n' "$STDIN5" | grep 'w3')
+assert_contains "exact done beats spinner inference" "claude $(printf '\033[32m✓\033[0m')" "$line"
+[[ "$line" != *"⣽"* ]] \
+    && { TESTS_PASS=$((TESTS_PASS+1)); echo "  ok   spinner inference suppressed by exact state"; } \
+    || { TESTS_FAIL=$((TESTS_FAIL+1)); echo "  FAIL inference spinner leaked past sidecar"; }
+
+# parked overrides everything, including a working status content
+stub_fzf_pick "$SANDBOX/fzf-dump-6"
+printf 'working\n' > "$TAS/panes/dev_%3.status"
+: > "$TAS/parked/dev_%3.parked"
+HOME="$SANDBOX" TMUX_FZF_MRU=0 "$PWD/scripts/pane.sh" switch >/dev/null 2>&1
+line=$(printf '%s\n' "$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump-6" | sed 1d)" | grep 'w3')
+assert_contains "parked file parks the pane" "claude $(printf '\033[2m⏸\033[0m')" "$line"
+
+# timed wait: future expiry renders ⏳; expired wait is cleaned up like their
+# reader does (file removed, wait content rewritten to done) and the pane
+# falls back to the now-done status
+stub_fzf_pick "$SANDBOX/fzf-dump-7"
+rm -f "$TAS/parked/dev_%3.parked"
+printf 'wait\n' > "$TAS/panes/dev_%3.status"
+echo "$(( $(date +%s) + 600 ))" > "$TAS/wait/dev_%3.wait"
+HOME="$SANDBOX" TMUX_FZF_MRU=0 "$PWD/scripts/pane.sh" switch >/dev/null 2>&1
+line=$(printf '%s\n' "$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump-7" | sed 1d)" | grep 'w3')
+assert_contains "future wait expiry renders hourglass" "claude $(printf '\033[36m⏳\033[0m')" "$line"
+stub_fzf_pick "$SANDBOX/fzf-dump-8"
+echo "$(( $(date +%s) - 10 ))" > "$TAS/wait/dev_%3.wait"
+HOME="$SANDBOX" TMUX_FZF_MRU=0 "$PWD/scripts/pane.sh" switch >/dev/null 2>&1
+[[ -f "$TAS/wait/dev_%3.wait" ]] \
+    && { TESTS_FAIL=$((TESTS_FAIL+1)); echo "  FAIL expired wait file not removed"; } \
+    || { TESTS_PASS=$((TESTS_PASS+1)); echo "  ok   expired wait file removed"; }
+assert_eq "expired wait content rewritten to done" "done" "$(cat "$TAS/panes/dev_%3.status")"
+line=$(printf '%s\n' "$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump-8" | sed 1d)" | grep 'w3')
+assert_contains "expired wait falls back to done" "claude $(printf '\033[32m✓\033[0m')" "$line"
+rm -rf "$TAS"
+
 # kill keeps the flat "S:W.P: detail" list (with [current] shortcut)
 stub_fzf_pick "$SANDBOX/fzf-dump-4"
 "$PWD/scripts/pane.sh" kill >/dev/null 2>&1

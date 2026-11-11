@@ -168,16 +168,19 @@ On desktop clients your options keep winning: `fzf` applies `FZF_DEFAULT_OPTS` w
 
 `prefix` + pane **switch** (and **join**) shows every pane as a tree — session ▸ window › pane — instead of a flat list. Each line carries its jump target hidden from display, so picking a session or window line jumps to its most recently used pane and the preview still shows live pane content.
 
-States are inferred when the picker opens, from the pane itself — no daemon, no hooks:
+States are inferred when the picker opens, from the pane itself — no daemon, no hooks. If the [tmux-agent-status](https://github.com/samleeney/tmux-agent-status) plugin is installed, its hook-written cache (`~/.cache/tmux-agent-status`) is read instead for the panes it tracks — exact lifecycle states (including `ask` and parked panes) replace the heuristic, with no configuration on either side:
 
 | glyph | meaning |
 | --- | --- |
-| `⣽` yellow | coding agent (claude, codex, gemini, aider, copilot, cursor-agent, opencode, crush, amp, qwen, droid, omp) whose last output lines contain a spinner or `esc to interrupt` — running |
-| `✓` green | agent pane with no activity signs — turn done, waiting for you |
+| `⣽` yellow | coding agent running (claude, codex, gemini, aider, copilot, cursor-agent, opencode, crush, amp, qwen, droid, omp): a spinner or `esc to interrupt` in its last output lines — or an exact `working` state from tmux-agent-status |
+| `✓` green | agent idle — turn done, waiting for you (or the plugin's exact `done`) |
+| `❓` red | agent needs you — permission or question pending (exact `ask` from tmux-agent-status) |
+| `⏳` cyan | agent on a timed wait that has not expired yet (exact `wait`) |
+| `⏸` dim | agent parked by tmux-agent-status |
 | `✝` red | dead pane (from tmux's `pane_dead`) |
 | *(none)* | plain pane — no state is invented for it |
 
-Sessions show aggregate counts (`⣽1 ✓2`); single-pane windows collapse into one line; lines are styled with bold sessions and italic windows, searchable like any fzf list.
+Sessions show aggregate counts (`⣽1 ✓2 ❓1`); single-pane windows collapse into one line; lines are styled with bold sessions and italic windows, searchable like any fzf list.
 
 ## MRU pane ordering
 

@@ -30,23 +30,61 @@ panes_raw=$(tmux list-panes -a -F "#{pane_id}${sep}#S:#{window_index}.#{pane_ind
 # .preview and the sed-based handlers already parse.
 panes=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" 'BEGIN { FS = sep } NF >= 8 { print $2 ": " $8 }')
 
-# Agent status, inferred at picker-open time from the pane itself — no daemon,
-# no hooks: a pane whose current command is a known coding agent gets its last
-# output lines inspected; a spinner or "esc to interrupt" means running,
-# anything else means the agent sits idle (turn done, waiting for you). Dead
-# panes — any pane, agent or not — come straight from tmux's dead flag.
+# Agent status — exact first, inferred otherwise, no daemon of our own. When
+# the tmux-agent-status plugin tracks a pane, its hook-written cache files
+# carry the real lifecycle state and we read that. For every other pane the
+# status is inferred at picker-open time from the pane itself: a pane whose
+# current command is a known coding agent gets its last output lines
+# inspected; a spinner or "esc to interrupt" means running, anything else
+# means the agent sits idle (turn done, waiting for you). Dead panes — any
+# pane, agent or not — come straight from tmux's dead flag.
 agent_re='claude|codex|gemini|aider|copilot|cursor-agent|opencode|crush|amp|qwen|droid|omp'
+# tmux-agent-status cache: panes/<session>_<pane>.status holds one word
+# (working|wait|ask|done); parked/<session>_<pane>.parked and
+# wait/<session>_<pane>.wait (content: expiry epoch) override it. Resolution
+# mirrors their get_pane_status, minus the session-level fallback — for that
+# we keep our own inference.
+tas_dir="$HOME/.cache/tmux-agent-status"
+[ -d "$tas_dir" ] || tas_dir=""
+tas_now=$(date +%s)
 statuses=""
 while IFS="$sep" read -r pid _ptarget _psess _pwin _pwinname pcmd pdead _pdetail; do
     state=""
     if [[ "$pdead" == "1" ]]; then
         state=dead
-    elif [[ "$pcmd" =~ ^($agent_re)$ ]]; then
-        if tmux capture-pane -p -t "$pid" -S -5 2>/dev/null |
-            grep -qE '⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏|⣾|⣽|⣻|⣿|⣯|⣷|⣟|esc to interrupt|✢|✳|✶|✻|✽|✦|Thinking'; then
-            state=running
-        else
-            state=idle
+    elif [[ "$pcmd" =~ ^($agent_re)$ || -n "$tas_dir" && -f "$tas_dir/panes/${_psess}_${pid}.agent" ]]; then
+        if [[ -n "$tas_dir" ]]; then
+            if [[ -f "$tas_dir/parked/${_psess}_${pid}.parked" ]]; then
+                state=parked
+            else
+                if [[ -f "$tas_dir/wait/${_psess}_${pid}.wait" ]]; then
+                    expiry=$(cat "$tas_dir/wait/${_psess}_${pid}.wait" 2>/dev/null)
+                    if [[ "$expiry" =~ ^[0-9]+$ ]] && (( expiry > tas_now )); then
+                        state=wait
+                    else
+                        # expired: clean up exactly like their reader does
+                        rm -f "$tas_dir/wait/${_psess}_${pid}.wait"
+                        [[ "$(cat "$tas_dir/panes/${_psess}_${pid}.status" 2>/dev/null)" == "wait" ]] &&
+                            printf 'done\n' > "$tas_dir/panes/${_psess}_${pid}.status"
+                    fi
+                fi
+                if [[ -z "$state" ]]; then
+                    case "$(cat "$tas_dir/panes/${_psess}_${pid}.status" 2>/dev/null)" in
+                        working) state=running ;;
+                        ask) state=ask ;;
+                        wait) state=wait ;;
+                        done) state=idle ;;
+                    esac
+                fi
+            fi
+        fi
+        if [[ -z "$state" ]]; then
+            if tmux capture-pane -p -t "$pid" -S -5 2>/dev/null |
+                grep -qE '⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏|⣾|⣽|⣻|⣿|⣯|⣷|⣟|esc to interrupt|✢|✳|✶|✻|✽|✦|Thinking'; then
+                state=running
+            else
+                state=idle
+            fi
         fi
     fi
     [ -n "$state" ] && statuses+="${pid}${sep}${state}"$'\n'
@@ -77,7 +115,9 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
         ESC = sprintf("%c", 27)
         bold = ESC "[1m"; ital = ESC "[3m"; dim = ESC "[2m"; rst = ESC "[0m"
         run_c = ESC "[1;33m"; idle_c = ESC "[32m"; dead_c = ESC "[2;31m"
+        ask_c = ESC "[1;31m"; wait_c = ESC "[36m"; parked_c = ESC "[2m"
         run_g = run_c "⣽" rst; idle_g = idle_c "✓" rst; dead_g = dead_c "✝" rst
+        ask_g = ask_c "❓" rst; wait_g = wait_c "⏳" rst; parked_g = parked_c "⏸" rst
         ns = split(ENVIRON["pane_statuses"], S, "\n")
         for (i = 1; i <= ns; i++) {
             p = index(S[i], sep)
@@ -102,7 +142,8 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
         if (st == "running") cnt[ses, "r"]++
         else if (st == "idle") cnt[ses, "i"]++
         else if (st == "dead") cnt[ses, "d"]++
-        g = st == "running" ? run_g : st == "idle" ? idle_g : st == "dead" ? dead_g : ""
+        else if (st == "ask") cnt[ses, "a"]++
+        g = st == "running" ? run_g : st == "idle" ? idle_g : st == "ask" ? ask_g : st == "wait" ? wait_g : st == "parked" ? parked_g : st == "dead" ? dead_g : ""
         # strip the default FMT prefix "cmd · "; index/substr are byte-based
         # in bwk awk, and " · " is 4 bytes in UTF-8 — same byte math everywhere
         tail = det
@@ -125,6 +166,7 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
             counts = ""
             if (cnt[s, "r"]) counts = counts " " run_c "⣽" cnt[s, "r"] rst
             if (cnt[s, "i"]) counts = counts " " idle_c "✓" cnt[s, "i"] rst
+            if (cnt[s, "a"]) counts = counts " " ask_c "❓" cnt[s, "a"] rst
             if (cnt[s, "d"]) counts = counts " " dead_c "✝" cnt[s, "d"] rst
             print star[s] sep bold "▸ " s rst counts
             nw = 0
