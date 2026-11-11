@@ -11,24 +11,58 @@ current_pane_origin=$(tmux display-message -p $TMUX_FZF_CLIENT_ARG '#S:#{window_
 sep=$'\x1f'
 if [[ -z "$TMUX_FZF_PANE_FORMAT" ]]; then
     # command first — the tree uses it as the pane's name slot and strips the
-    # "cmd · " prefix from the detail; the dim tail is the working directory's
-    # basename (the worktree or project name) plus the state flags. TMUX_FZF_
-    # PANE_FORMAT replaces this detail wholesale (tree, status glyph and
-    # preview still wrap it).
-    FMT='#{pane_current_command} · #{b:pane_current_path}#{?pane_active, ●,}#{?window_zoomed_flag, ⤢,}'
+    # "cmd · " prefix from the detail; the dim tail is the working directory
+    # (shrunk fish-style by default, see TMUX_FZF_PANE_PATH_STYLE in the
+    # README) plus the state flags. TMUX_FZF_PANE_FORMAT replaces this detail
+    # wholesale (tree, status glyph and preview still wrap it).
+    FMT='#{pane_current_command} · #{pane_current_path}#{?pane_active, ●,}#{?window_zoomed_flag, ⤢,}'
 else
     FMT="$TMUX_FZF_PANE_FORMAT"
 fi
 
 # One list-panes pass carries everything the tree needs: pane_id (stable MRU
 # key — S:W.P indices shift when windows close), the S:W.P target, session,
-# window index, window name, current command, dead flag and the display
-# detail.
-panes_raw=$(tmux list-panes -a -F "#{pane_id}${sep}#S:#{window_index}.#{pane_index}${sep}#S${sep}#{window_index}${sep}#{window_name}${sep}#{pane_current_command}${sep}#{pane_dead}${sep}${FMT}")
+# window index, window name, current command, dead flag, the display detail
+# and the raw working directory for fish-style shrinking.
+panes_raw=$(tmux list-panes -a -F "#{pane_id}${sep}#S:#{window_index}.#{pane_index}${sep}#S${sep}#{window_index}${sep}#{window_name}${sep}#{pane_current_command}${sep}#{pane_dead}${sep}${FMT}${sep}#{pane_current_path}")
+
+# awk shape for both lists below: shorten every directory component but the
+# last to its first character ("fish" — /u/s/wt), keep the full path ("full"),
+# or reduce to the last component ("basename"). $HOME renders as ~.
+dir_shrink='
+    function shrink(path,    h, n, a, i, out, c) {
+        h = ENVIRON["HOME"]
+        if (h != "" && index(path, h) == 1) path = "~" substr(path, length(h) + 1)
+        if (style == "full") return path
+        n = split(path, a, "/")
+        if (n <= 1) return path
+        if (style == "basename") return a[n]
+        out = ""
+        for (i = 1; i < n; i++) {
+            c = a[i]
+            if (c == "") out = out "/"
+            else if (c == "~") out = out "~/"
+            else out = out substr(c, 1, substr(c, 1, 1) == "." ? 2 : 1) "/"
+        }
+        return out a[n]
+    }
+    function restyle(tail, path,    p) {
+        if (path != "") {
+            p = index(tail, path)
+            if (p > 0) tail = substr(tail, 1, p - 1) shrink(path) substr(tail, p + length(path))
+        }
+        return tail
+    }
+    BEGIN {
+        style = ENVIRON["TMUX_FZF_PANE_PATH_STYLE"]
+        if (style != "fish" && style != "full" && style != "basename") style = "fish"
+    }'
 
 # Flat targets for the structural actions — the same "S:W.P: detail" shape
-# .preview and the sed-based handlers already parse.
-panes=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" 'BEGIN { FS = sep } NF >= 8 { print $2 ": " $8 }')
+# .preview and the sed-based handlers already parse (only the display path is
+# shrunk; handlers read what is left of ": ").
+panes=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" "$dir_shrink"'
+    BEGIN { FS = sep } NF >= 8 { print $2 ": " restyle($8, $9) }')
 
 # Agent status — exact first, inferred otherwise, no daemon of our own. When
 # the tmux-agent-status plugin tracks a pane, its hook-written cache files
@@ -109,7 +143,8 @@ export pane_statuses="$statuses"
 tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
     -v mru_file="$mru_file" \
     -v excl_current=$([[ -z "$TMUX_FZF_SWITCH_CURRENT" ]] && echo 1 || echo 0) \
-    -v cur="$current_pane" '
+    -v cur="$current_pane" "$dir_shrink"'
+
     BEGIN {
         FS = sep
         ESC = sprintf("%c", 27)
@@ -149,6 +184,7 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
         tail = det
         p = index(tail, " · ")
         if (p > 1 && substr(tail, 1, p - 1) == cmd) tail = substr(tail, p + 4)
+        tail = restyle(tail, $9)
         b[id] = cmd (g != "" ? " " g : "") " " dim "· " tail rst
         pn[id] = r; pt[id] = tgt; pw[id] = wk
         wpanes[wk] = wpanes[wk] (wpanes[wk] != "" ? "\n" : "") id

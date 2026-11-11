@@ -150,8 +150,19 @@ rm -rf "$TAS"
 # kill keeps the flat "S:W.P: detail" list (with [current] shortcut)
 stub_fzf_pick "$SANDBOX/fzf-dump-4"
 "$PWD/scripts/pane.sh" kill >/dev/null 2>&1
-assert_contains "kill uses the flat list" "dev:2.2: htop · ~/w2 [80x24]" \
+assert_contains "kill uses the flat list" "dev:2.2: htop · ~/d/authservice [80x24]" \
     "$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump-4")"
+
+# path styles: fish (default) shortens every directory but the last to one
+# character; full keeps the path verbatim; basename keeps only the project dir
+stub_fzf_pick "$SANDBOX/fzf-dump-9"
+TMUX_FZF_PANE_PATH_STYLE=basename "$PWD/scripts/pane.sh" switch >/dev/null 2>&1
+line=$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump-9" | sed 1d | grep 'htop')
+assert_contains "basename style keeps project dir" "htop $(printf '\033[2m· authservice [80x24]\033[0m')" "$line"
+stub_fzf_pick "$SANDBOX/fzf-dump-10"
+TMUX_FZF_PANE_PATH_STYLE=full "$PWD/scripts/pane.sh" switch >/dev/null 2>&1
+line=$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump-10" | sed 1d | grep 'htop')
+assert_contains "full style keeps the verbatim path" "htop $(printf '\033[2m· ~/dev/authservice [80x24]\033[0m')" "$line"
 
 # .preview understands both line shapes: tree field 1 and flat "S:W.P: ..."
 out=$("$PWD/scripts/.preview" "$(printf 'dev:2.2\037▸ dev')" 2>&1)

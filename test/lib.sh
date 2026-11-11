@@ -59,12 +59,12 @@ case "\$1" in
       if [ "\$4" = '#{pane_id}' ]; then
           printf '%%0\n%%1\n%%2\n%%3\n%%5\n%%4\n'
       else
-          printf '%%1%sdev:2.1%sdev%s1%sw1%svim%s0%svim · ~/w1 [80x24]\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
-          printf '%%0%sdev:2.0%sdev%s0%sw0%szsh%s0%szsh · ~/w0 [80x24]\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
-          printf '%%2%sdev:2.2%sdev%s2%sw2%shtop%s0%shtop · ~/w2 [80x24]\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
-          printf '%%3%sdev:2.3%sdev%s3%sw3%sclaude%s0%sclaude · ~/w3 [80x24]\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
-          printf '%%5%sops:0.1%sops%s0%sw0%sclaude%s0%sclaude · ~/ops-wt [80x24]\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
-          printf '%%4%sops:0.0%sops%s0%sw0%szsh%s0%szsh · ~/ops [80x24]\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%1%sdev:2.1%sdev%s1%sw1%svim%s0%svim · ~/w1 [80x24]%s~/w1\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%0%sdev:2.0%sdev%s0%sw0%szsh%s0%szsh · ~/w0 [80x24]%s~/w0\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%2%sdev:2.2%sdev%s2%sw2%shtop%s0%shtop · /Users/carakan/dev/authservice [80x24]%s/Users/carakan/dev/authservice\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%3%sdev:2.3%sdev%s3%sw3%sclaude%s0%sclaude · ~/w3 [80x24]%s~/w3\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%5%sops:0.1%sops%s0%sw0%sclaude%s0%sclaude · ~/ops-wt [80x24]%s~/ops-wt\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
+          printf '%%4%sops:0.0%sops%s0%sw0%szsh%s0%szsh · ~/ops [80x24]%s~/ops\n' "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep" "\$sep"
       fi ;;
   capture-pane)
       case "\$*" in
