@@ -307,7 +307,7 @@ For some reasons, you may want to customize format of panes, windows, sessions l
 
 `TMUX_FZF_PANE_FORMAT`   `TMUX_FZF_WINDOW_FORMAT`   `TMUX_FZF_SESSION_FORMAT`
 
-For example, the pane tree's detail line comes from `TMUX_FZF_PANE_FORMAT`; the default shows command, path, size and state flags (the tree prepends the agent status glyph and uses the command as the pane's name). To customize it:
+For example, the pane tree's detail line comes from `TMUX_FZF_PANE_FORMAT`; the default shows command, the working directory's basename and the state flags (`claude · auth-refactor ●⤢`) — the tree prepends the status glyph and uses the command as the pane's name. To customize it:
 
 ```tmux
 TMUX_FZF_PANE_FORMAT="#{pane_current_command} · #{pane_current_path} [#{pane_width}x#{pane_height}] [history #{history_size}/#{history_limit}] #{?pane_active,●,}#{?window_zoomed_flag,⤢,}"

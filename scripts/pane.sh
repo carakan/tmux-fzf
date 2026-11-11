@@ -11,11 +11,11 @@ current_pane_origin=$(tmux display-message -p $TMUX_FZF_CLIENT_ARG '#S:#{window_
 sep=$'\x1f'
 if [[ -z "$TMUX_FZF_PANE_FORMAT" ]]; then
     # command first — the tree uses it as the pane's name slot and strips the
-    # "cmd · " prefix from the detail; path, size and state flags form the dim
-    # tail. History counters were dropped from the default: nothing in the
-    # picker or the preview ever searched them. TMUX_FZF_PANE_FORMAT replaces
-    # this detail wholesale (tree, status glyph and preview still wrap it).
-    FMT='#{pane_current_command} · #{pane_current_path} [#{pane_width}x#{pane_height}]#{?pane_active, ●,}#{?window_zoomed_flag, ⤢,}'
+    # "cmd · " prefix from the detail; the dim tail is the working directory's
+    # basename (the worktree or project name) plus the state flags. TMUX_FZF_
+    # PANE_FORMAT replaces this detail wholesale (tree, status glyph and
+    # preview still wrap it).
+    FMT='#{pane_current_command} · #{b:pane_current_path}#{?pane_active, ●,}#{?window_zoomed_flag, ⤢,}'
 else
     FMT="$TMUX_FZF_PANE_FORMAT"
 fi
