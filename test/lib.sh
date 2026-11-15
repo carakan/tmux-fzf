@@ -52,8 +52,8 @@ case "\$1" in
   display-message)
       case "\$3" in
         *zoomed_flag*) echo 0 ;;
-        '#S:#{window_index}.#{pane_index}') echo "dev:2.1" ;;
-        *) echo "dev:2.1: vim" ;;
+        '#S:#{window_index}.#{pane_index}') echo "\${STUB_CURRENT:-dev:2.1}" ;;
+        *) echo "\${STUB_CURRENT:-dev:2.1}: vim" ;;
       esac ;;
   list-panes)
       if [ "\$4" = '#{pane_id}' ]; then

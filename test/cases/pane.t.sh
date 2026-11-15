@@ -9,7 +9,7 @@ sep=$'\x1f'
 
 stub_tmux
 printf '%%1\n%%0\n%%2\n' > "$XDG_CACHE_HOME/tmux-fzf-pane-mru"   # %2 newest, %0 oldest, %3-%5 never used
-stub_fzf_pick "$SANDBOX/fzf-dump" 4   # picks line 4: dev:2.3, pane %3
+stub_fzf_pick "$SANDBOX/fzf-dump" 5   # picks line 5: dev:2.3, pane %3
 
 cd "$REPO_ROOT"
 "$PWD/scripts/pane.sh" switch >/dev/null 2>&1
@@ -37,14 +37,17 @@ STDIN=$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump" | sed 1d)
 
 # Tree: targets of the displayed lines, in order. dev leads (its %2 is the
 # most-recent pane); inside dev the windows follow pane recency (w2 %2, w0
-# %0, w3 never-used); the current pane's window (w1) is hidden by default;
-# ops trails. Single-pane windows merge into one line, ops w0 splits. The
-# agent pane's subprocess lines sit under its merged window line, keeping
-# the pane as their target.
+# %0, w1 the current pane's window, w3 never-used); ops trails. Single-pane
+# windows merge into one line, ops w0 splits. The current pane is never a
+# pick target, but its window still lists it read-only — here w1 holds only
+# that pane, so the window line carries it inline. The agent pane's
+# subprocess lines sit under its merged window line, keeping the pane as
+# their target.
 assert_eq "hierarchical MRU target order" \
 "dev:2.2
 dev:2.2
 dev:2.0
+dev:2.1
 dev:2.3
 dev:2.3
 dev:2.3
@@ -103,7 +106,8 @@ stub_fzf_pick "$SANDBOX/fzf-dump-2"
 rm -f "$XDG_CACHE_HOME/tmux-fzf-pane-mru"
 TMUX_FZF_MRU=0 "$PWD/scripts/pane.sh" switch >/dev/null 2>&1
 assert_eq "MRU=0 restores list order" \
-"dev:2.0
+"dev:2.1
+dev:2.1
 dev:2.0
 dev:2.2
 dev:2.3
@@ -204,6 +208,22 @@ stub_fzf_pick "$SANDBOX/fzf-dump-10"
 TMUX_FZF_PANE_PATH_STYLE=full "$PWD/scripts/pane.sh" switch >/dev/null 2>&1
 line=$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump-10" | sed 1d | grep 'htop')
 assert_contains "full style keeps the verbatim path" "htop $(printf '\033[2m· ~/dev/authservice [80x24]\033[0m')" "$line"
+
+# The current pane never becomes a pick row, but its window shows it
+# read-only. When the current pane shares a window with other panes, the
+# window line carries it (green ● + command + state) next to the window name.
+stub_tmux
+export STUB_CURRENT="ops:0.0"
+stub_fzf_pick "$SANDBOX/fzf-dump-11"
+TMUX_FZF_MRU=0 "$PWD/scripts/pane.sh" switch >/dev/null 2>&1
+STDIN11=$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump-11" | sed 1d)
+line=$(printf '%s\n' "$STDIN11" | grep 'zsh' | grep '●' | head -1)
+assert_contains "current pane annotated on its window line" "$(printf '\033[1;32m●\033[0m \033[2mzsh\033[0m')" "$line"
+printf '%s\n' "$STDIN11" | cut -d"$sep" -f1 | grep -qx "ops:0.0" \
+    && { TESTS_FAIL=$((TESTS_FAIL+1)); echo "  FAIL current pane became a pick target"; } \
+    || { TESTS_PASS=$((TESTS_PASS+1)); echo "  ok   current pane stays out of the pick list"; }
+unset STUB_CURRENT
+stub_tmux
 
 # .preview understands both line shapes: tree field 1 and flat "S:W.P: ..."
 out=$("$PWD/scripts/.preview" "$(printf 'dev:2.2\037▸ dev')" 2>&1)

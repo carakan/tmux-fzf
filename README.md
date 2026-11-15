@@ -182,6 +182,8 @@ States are inferred when the picker opens, from the pane itself — no daemon, n
 
 Sessions show aggregate counts (`⣽1 ✓2 ❓1`); single-pane windows collapse into one line; lines are styled with bold sessions and italic windows, searchable like any fzf list.
 
+The current pane is never a pick target — you cannot re-pick yourself — but its window still shows it **read-only** next to the window name: a green `●` with the pane's command and state (`2 dotfiles ● omp ⣽`), so you always see where you are and whether your agent is busy or done. When the current pane is the only pane in its window, the window line carries it inline instead (`1 SD-blog ─ claude ⣽ · ~/d/p/tmux-fzf`). With `TMUX_FZF_SWITCH_CURRENT=1` the pane becomes a normal row and the annotation disappears.
+
 ## MRU pane ordering
 
 The tree is ordered by **hierarchical MRU**: the most recently used pane pulls its window to the top of its session and its session to the top of the list; inside a group, index order rules. The list reads like Alt-Tab at every level.
@@ -333,7 +335,7 @@ For more information, check "FORMATS" section in tmux manual.
 
 ## Filter
 
-By default, the current session, window, and pane, are not listed among the switch possibilities. To include it, set:
+By default, the current session, window, and pane, are not listed among the switch possibilities (the current pane is still shown read-only on its window line). To include it, set:
 
 ```tmux
 TMUX_FZF_SWITCH_CURRENT=1

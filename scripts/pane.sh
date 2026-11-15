@@ -210,7 +210,7 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
         ESC = sprintf("%c", 27)
         bold = ESC "[1m"; ital = ESC "[3m"; dim = ESC "[2m"; rst = ESC "[0m"
         run_c = ESC "[1;33m"; idle_c = ESC "[32m"; dead_c = ESC "[2;31m"
-        ask_c = ESC "[1;31m"; wait_c = ESC "[36m"; parked_c = ESC "[2m"
+        ask_c = ESC "[1;31m"; wait_c = ESC "[36m"; parked_c = ESC "[2m"; act_c = ESC "[1;32m"
         run_g = run_c "⣽" rst; idle_g = idle_c "✓" rst; dead_g = dead_c "✝" rst
         ask_g = ask_c "❓" rst; wait_g = wait_c "⏳" rst; parked_g = parked_c "⏸" rst
         # ps snapshot: pid, ppid, stat, command — children grouped by root pid
@@ -252,11 +252,10 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
     NF >= 8 {
         id = $1; tgt = $2; ses = $3; widx = $4 + 0; wnm = $5; cmd = $6; det = $8
         if ($10 in aname) cmd = aname[$10]
-        if (excl_current && tgt == cur) next
         r = (id in rank) ? rank[id] : 1000000 + ++fresh
         st = (id in stat) ? stat[id] : ""
-        if (!(ses in srank) || r < srank[ses]) { srank[ses] = r; star[ses] = tgt }
         wk = ses SUBSEP widx
+        if (!(ses in srank) || r < srank[ses]) { srank[ses] = r; star[ses] = tgt }
         if (!(wk in wrank) || r < wrank[wk]) { wrank[wk] = r; wtar[wk] = tgt; wnum[wk] = widx }
         wn[wk] = wnm
         if (st == "running") cnt[ses, "r"]++
@@ -274,6 +273,14 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
         b[id] = cmd (g != "" ? " " g : "") " " dim "· " tail rst
         pn[id] = r; pt[id] = tgt; pw[id] = wk
         kid[id] = (st != "" && st != "dead") ? $10 : ""
+        if (excl_current && tgt == cur) {
+            # the current pane is never a pick target, but its window still
+            # shows it read-only: the window line carries the pane and its
+            # state next to the window name
+            ccmd[wk] = cmd; cgl[wk] = g; cbody[wk] = b[id]; ctgt[wk] = tgt
+            if (!(wk in wseen)) { wseen[wk] = 1; wslist[++m] = wk; wses[wk] = ses }
+            next
+        }
         wpanes[wk] = wpanes[wk] (wpanes[wk] != "" ? "\n" : "") id
         if (!(wk in wseen)) { wseen[wk] = 1; wslist[++m] = wk; wses[wk] = ses }
     }
@@ -328,11 +335,18 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
                 for (i = 1; i <= np; i++) for (j = i + 1; j <= np; j++)
                     if (pkey(plist[j]) < pkey(plist[i])) { t = plist[i]; plist[i] = plist[j]; plist[j] = t }
                 wb = (wi == nw) ? "└" : "├"
-                if (np == 1) {
-                    print wtar[wk] sep "  " wb " " ital wnum[wk] " " wn[wk] rst dim " ─ " rst b[plist[1]]
+                # read-only annotation: the current pane, which is excluded
+                # from the pickable rows, shown next to the window name
+                extra = ""
+                if (wk in ccmd && np > 0) extra = " " act_c "●" rst " " dim ccmd[wk] rst (cgl[wk] != "" ? " " cgl[wk] : "") rst
+                if (np == 0) {
+                    # the window holds only the current pane: show it inline
+                    print ctgt[wk] sep "  " wb " " ital wnum[wk] " " wn[wk] rst dim " ─ " rst cbody[wk]
+                } else if (np == 1 && !(wk in ccmd)) {
+                    print wtar[wk] sep "  " wb " " ital wnum[wk] " " wn[wk] rst dim " ─ " rst b[plist[1]] extra
                     print_kids(pt[plist[1]], kid[plist[1]], "  ")
                 } else {
-                    print wtar[wk] sep "  " wb " " ital wnum[wk] " " wn[wk] rst
+                    print wtar[wk] sep "  " wb " " ital wnum[wk] " " wn[wk] rst extra
                     for (pi = 1; pi <= np; pi++) {
                         pb = (pi == np) ? "└" : "├"
                         prefix = (wi == nw) ? "      " : "  │   "
