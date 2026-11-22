@@ -168,7 +168,7 @@ On desktop clients your options keep winning: `fzf` applies `FZF_DEFAULT_OPTS` w
 
 `prefix` + pane **switch** (and **join**) shows every pane as a tree — session ▸ window › pane — instead of a flat list. Each line carries its jump target hidden from display, so picking a session or window line jumps to its most recently used pane and the preview still shows live pane content.
 
-States are inferred when the picker opens, from the pane itself — no daemon, no hooks. A pane counts as an agent pane when any process under it has an agent command (claude, codex, gemini, aider, copilot, cursor-agent, opencode, crush, amp, qwen, droid, omp, pi) as its executable basename — or as the first argument's basename under an interpreter, so a wrapper install like `node /path/to/bin/claude` is still named claude (approach ported from [tmux-agent-status](https://github.com/samleeney/tmux-agent-status)'s agent-processes.sh). For every agent pane the tree also lists its live subprocesses — breadth-first from the pane's root pid, with a state mark each (`▸` on-cpu, `·` sleeping, `⏸` stopped, `✝` zombie), capped at three plus a count line; picking a subprocess line jumps to its pane. Only live processes exist here: a finished subprocess vanishes from `ps`, and no daemon remembers it. If the [tmux-agent-status](https://github.com/samleeney/tmux-agent-status) plugin is installed, its hook-written cache (`~/.cache/tmux-agent-status`) is read instead for the panes it tracks — exact lifecycle states (including `ask` and parked panes) replace the heuristic, with no configuration on either side:
+States are inferred when the picker opens, from the pane itself — no daemon, no hooks. A pane counts as an agent pane when any process under it has an agent command (claude, codex, gemini, aider, copilot, cursor-agent, opencode, crush, amp, qwen, droid, omp, pi) as its executable basename — or as the first argument's basename under an interpreter (`node`, `nodejs`, `bun`, `deno`, `python*`), so a wrapper install like `node /path/to/bin/claude` is still named claude. Launcher prefixes are skipped first (`env NAME=value`, `command`, `exec`, `nohup`), so `env DEBUG=1 node /path/to/bin/claude` registers too (approach ported from [tmux-agent-status](https://github.com/samleeney/tmux-agent-status)'s agent-processes.sh). For every agent pane the tree also lists its live subprocesses — breadth-first from the **agent process** (not the pane's shell), so the agent is never repeated as its own first child, one two-space indent step per level below it, with a state mark each (`▸` on-cpu, `·` sleeping, `⏸` stopped, `✝` zombie), capped at three plus a count line; picking a subprocess line jumps to its pane. Only live processes exist here: a finished subprocess vanishes from `ps`, and no daemon remembers it. The same agent name and state glyph appear in the flat lists (`kill`, `swap`, `break`, `resize`), so a pane whose wrapper is `node` still reads `claude ⣽`. If the [tmux-agent-status](https://github.com/samleeney/tmux-agent-status) plugin is installed, its hook-written cache (`~/.cache/tmux-agent-status`) is read instead for the panes it tracks — exact lifecycle states (including `ask` and parked panes) replace the heuristic, with no configuration on either side:
 
 | glyph | meaning |
 | --- | --- |
@@ -211,6 +211,17 @@ The plugin configures `fzf` through the very variable `fzf` already reads: every
 ```
 
 (`--tmux center,96%,88% -m --info=inline --padding 1,0,0,0` on compact clients) — and then your own `FZF_DEFAULT_OPTS` follows, where later occurrences win. To change the popup geometry or the preview window, add your own `--tmux` / `--preview-window` flag; to change anything else, add the flag. To list all available options, execute `fzf --help` in your shell.
+
+The pane tree is the one picker that sizes its popup to its content: the
+height grows to fit the number of tree lines (plus the header, the glyph
+legend and whatever border/footer/padding the effective options draw), never
+shrinking below the familiar 38%, and capped at 88% of the client so a huge
+tree still scrolls instead of overflowing. Width stays at the configured
+62%. This only happens when nothing else owns the geometry — a `--tmux` or
+`--popup` flag of your own, or the compact (phone) layout, keeps full control,
+and the tree header carries a key for only the state glyphs actually on
+screen (plus `● current` and `󰩨 zoomed` when relevant). The `[cancel]` row is
+dim italic, so it reads as an action instead of a target.
 
 ### Sharing one set of options with your shell
 
@@ -388,7 +399,9 @@ test/run.sh          # everything
 test/run.sh mru      # cases matching a substring
 ```
 
-Covered: `mru.sh` (append atomicity under concurrency, prune dedupe/dead/cap, ordering), `.envs` (geometry + `FZF_DEFAULT_OPTS` construction, compact detection, preview arrays), `pane.sh switch` end-to-end (picker order, recorded pick, exact argv/env shape), and the no-eval invariant (user-facing options must stay data, never shell input).
+Covered: `mru.sh` (append atomicity under concurrency, prune dedupe/dead/cap, ordering), `.envs` (geometry + `FZF_DEFAULT_OPTS` construction, compact detection, preview arrays), `pane.sh switch` end-to-end (picker order, recorded pick, exact argv/env shape, agent detection and subprocess rooting, flat-list state glyphs, tree
+popup sizing), and the no-eval invariant (user-facing options must stay data,
+never shell input).
 
 # License
 

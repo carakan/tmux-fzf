@@ -67,11 +67,25 @@ fi
 # size and follow behavior are yours, the preview command stays the plugin's
 # unless you set TMUX_FZF_PREVIEW=0 (after which even your own --preview
 # command, if you have one, applies untouched).
+#
+# Two internal facts are kept for the pickers, read before the plugin's own
+# options are prepended:
+#   TMUX_FZF_POPUP_PINNED=1  the user pinned a --tmux/--popup geometry, so
+#                            the content-fit popup sizing must not override it
+#   TMUX_FZF_COMPACT=1       the compact layout owns the geometry already
+case "${FZF_DEFAULT_OPTS-}" in
+  *--tmux*|*--popup*) TMUX_FZF_POPUP_PINNED=1 ;;
+  *) TMUX_FZF_POPUP_PINNED=0 ;;
+esac
+TMUX_FZF_COMPACT="$compact_client"
+# Desktop popup width in percent; scripts/pane.sh reuses it when it sizes the
+# tree popup to the number of lines instead of the fixed 38% height.
+TMUX_FZF_POPUP_WIDTH=62
 if [ "$compact_client" == "1" ]; then
   plugin_opts="-m"
   plugin_opts_tail="--tmux center,96%,88% --style=minimal --info=hidden --padding=0 --footer= --no-footer-border"
 else
-  plugin_opts="--tmux center,62%,38% -m"
+  plugin_opts="--tmux center,${TMUX_FZF_POPUP_WIDTH}%,38% -m"
   plugin_opts_tail=""
 fi
 if [ "$TMUX_FZF_PREVIEW" == 1 ]; then

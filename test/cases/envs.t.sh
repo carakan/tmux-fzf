@@ -13,6 +13,19 @@ assert_contains "desktop geometry prepended first" "--tmux center,62%,38% -m --p
 assert_contains "preview window default in env" "--preview-window :follow" "$out"
 assert_contains "preview command in options" "$REPO_ROOT/scripts/.preview {}" "$out"
 
+# The picker-side markers are read before the plugin prepends its own options:
+# a pinned popup geometry and the compact layout both own the tree popup size.
+out=$(bash -c '
+    FZF_DEFAULT_OPTS="--tmux center,80%,50%"
+    source "'"$REPO_ROOT"'/scripts/.envs"
+    printf "%s %s %s" "$TMUX_FZF_POPUP_PINNED" "$TMUX_FZF_COMPACT" "$TMUX_FZF_POPUP_WIDTH"')
+assert_eq "pinned popup and compact markers" "1 0 62" "$out"
+out=$(bash -c '
+    FZF_DEFAULT_OPTS="--no-bold"
+    source "'"$REPO_ROOT"'/scripts/.envs"
+    printf "%s" "$TMUX_FZF_POPUP_PINNED"')
+assert_eq "unpinned popup marker" "0" "$out"
+
 # User --preview-window replaces the plugin's :follow default (later wins)
 out=$(bash -c '
     FZF_DEFAULT_OPTS="--preview-window right:60%:wrap-word"

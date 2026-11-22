@@ -60,17 +60,29 @@ dir_shrink='
         gsub(/󰩨/, ESC "[1;35m󰩨" rst, tail)
         return tail
     }
+    # One glyph vocabulary for every list: the tree and the flat target list
+    # (kill/swap/break/resize) mark agent panes the same way.
+    function state_glyph(st) {
+        if (st == "running") return run_c "⣽" rst
+        if (st == "idle") return idle_c "✓" rst
+        if (st == "ask") return ask_c "❓" rst
+        if (st == "wait") return wait_c "⏳" rst
+        if (st == "parked") return parked_c "⏸" rst
+        if (st == "dead") return dead_c "✝" rst
+        return ""
+    }
     BEGIN {
         ESC = sprintf("%c", 27); rst = ESC "[0m"
+        bold = ESC "[1m"; ital = ESC "[3m"; dim = ESC "[2m"
+        run_c = ESC "[1;33m"; idle_c = ESC "[32m"; dead_c = ESC "[2;31m"
+        ask_c = ESC "[1;31m"; wait_c = ESC "[36m"; parked_c = ESC "[2m"
         style = ENVIRON["TMUX_FZF_PANE_PATH_STYLE"]
         if (style != "fish" && style != "full" && style != "basename") style = "fish"
     }'
 
-# Flat targets for the structural actions — the same "S:W.P: detail" shape
-# .preview and the sed-based handlers already parse (only the display path is
-# shrunk; handlers read what is left of ": ").
-panes=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" "$dir_shrink"'
-    BEGIN { FS = sep } NF >= 8 { print $2 ": " colorize(restyle($8, $9)) }')
+# Flat targets for the structural actions (kill/swap/break/resize) are built
+# below, AFTER agent detection, so they carry the same agent name and state
+# glyph as the tree.
 
 # Agent status — exact first, inferred otherwise, no daemon of our own. When
 # the tmux-agent-status plugin tracks a pane, its hook-written cache files
@@ -87,7 +99,10 @@ panes=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" "$dir_shrink"'
 # (approach ported from samleeney/tmux-agent-status agent-processes.sh).
 agent_re='claude|codex|gemini|aider|copilot|cursor-agent|opencode|crush|amp|qwen|droid|omp|pi'
 ps_tmp="$(mktemp "${TMPDIR:-/tmp}/tmux-fzf-ps.XXXXXX")"
-ps -axo pid=,ppid=,stat=,command= > "$ps_tmp" 2>/dev/null || { rm -f "$ps_tmp"; ps_tmp=""; }
+# -ww: some ps implementations clamp the command column to the terminal width,
+# which would cut "/path/to/claude" off the end of a long interpreter line and
+# hide the agent.
+ps -ww -axo pid=,ppid=,stat=,command= > "$ps_tmp" 2>/dev/null || { rm -f "$ps_tmp"; ps_tmp=""; }
 agent_roots=""
 agent_rows=""
 if [[ -n "$ps_tmp" ]]; then
@@ -109,25 +124,45 @@ if [[ -n "$ps_tmp" ]]; then
             }
             close(ps_file)
         }
+        # Agent command name of one process line: the executable basename, or
+        # the first non-flag argument under an interpreter. Launcher wrappers
+        # (env VAR=1, command, exec, nohup) are skipped, so "env X=1 node
+        # /p/bin/claude" still registers.
+        function agent_name(a,    f, nn, i, j, b) {
+            nn = split(a, f, " ")
+            i = 1
+            while (i <= nn) {
+                b = basename(f[i])
+                if (b == "env" || b == "command" || b == "exec" || b == "nohup" || b ~ /^[A-Za-z_][A-Za-z0-9_]*=/) { i++; continue }
+                break
+            }
+            if (i > nn) return ""
+            if (b ~ "^(" agent_re ")$") return b
+            if (b ~ /^(node|nodejs|bun|deno|python[0-9.]*)$/) {
+                for (j = i + 1; j <= nn; j++) {
+                    if (f[j] ~ /^-/) continue
+                    if (basename(f[j]) ~ "^(" agent_re ")$") return basename(f[j])
+                    break
+                }
+            }
+            return ""
+        }
         # iterative walk of the subtree below root — no recursion; returns
-        # the agent command name when found, "" when not
-        function subtree_agent(root,    q, qi, n, cur, arr, i, nn, a, f, k) {
+        # "pid<sep>name" of the agent PROCESS, so the tree can list the
+        # children of that agent instead of repeating the agent itself as its
+        # own first subprocess
+        function subtree_agent(root,    q, qi, n, cur, arr, i, nn, a, k) {
             q[1] = root; qi = 1; n = 1
             while (qi <= n) {
                 cur = q[qi]; qi++
                 a = ag[cur]
-                if (a != "") {
-                    nn = split(a, f, " ")
-                    k = basename(f[1])
-                    if (k ~ "^(" agent_re ")$") return k
-                    if (k ~ /^(node|bun|deno|python[0-9.]*)$/ && nn >= 2 && basename(f[2]) ~ "^(" agent_re ")$") return basename(f[2])
-                }
+                if (a != "" && (k = agent_name(a)) != "") return cur sep k
                 nn = split(ch[cur], arr, " ")
                 for (i = 1; i <= nn; i++) if (arr[i] != "") { n++; q[n] = arr[i] }
             }
             return ""
         }
-        NF >= 10 { name = subtree_agent($10); if (name != "") print $10 sep name }
+        NF >= 10 { r = subtree_agent($10); if (r != "") print $10 sep r }
     ')
     agent_roots="$(printf '%s\n' "$agent_rows" | cut -d"$sep" -f1 | tr '\n' ' ')"
     export agent_names="$agent_rows"
@@ -184,6 +219,40 @@ while IFS="$sep" read -r pid _ptarget _psess _pwin _pwinname pcmd pdead _pdetail
 done <<< "$panes_raw"
 export pane_statuses="$statuses"
 
+# Flat targets for the structural actions — the same "S:W.P: detail" shape
+# .preview and the sed-based handlers already parse (only the display path is
+# shrunk; handlers read what is left of ": "). Agent panes carry the agent
+# name and lifecycle glyph here too, so a pane whose wrapper is "node
+# /path/to/claude" reads "claude ✓" in kill/swap, not "node".
+panes=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" "$dir_shrink"'
+    BEGIN {
+        FS = sep
+        n = split(ENVIRON["agent_names"], AN, "\n")
+        for (i = 1; i <= n; i++) {
+            p = index(AN[i], sep); if (p < 1) continue
+            root = substr(AN[i], 1, p - 1); rest = substr(AN[i], p + 1)
+            p = index(rest, sep); if (p < 1) continue
+            aname[root] = substr(rest, p + 1)
+        }
+        n = split(ENVIRON["pane_statuses"], S, "\n")
+        for (i = 1; i <= n; i++) {
+            p = index(S[i], sep)
+            if (p > 1) stat[substr(S[i], 1, p - 1)] = substr(S[i], p + 1)
+        }
+    }
+    NF >= 8 {
+        cmd = $6; if ($10 in aname) cmd = aname[$10]
+        st = ($1 in stat) ? stat[$1] : ""
+        g = state_glyph(st)
+        tail = $8
+        p = index(tail, " · ")
+        # the detail starts with the raw tmux command (node/…), which the
+        # agent name replaced above — strip either form before the body
+        if (p > 1 && (substr(tail, 1, p - 1) == cmd || substr(tail, 1, p - 1) == $6)) tail = substr(tail, p + 4)
+        print $2 ": " cmd (g != "" ? " " g : "") " " dim "· " colorize(restyle(tail, $9)) rst
+    }')
+
+
 mru_file=""
 if [ "${TMUX_FZF_MRU:-1}" != "0" ] && [ -x "$CURRENT_DIR/mru.sh" ]; then
     "$CURRENT_DIR/mru.sh" prune >/dev/null 2>&1 || true
@@ -207,12 +276,7 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
 
     BEGIN {
         FS = sep
-        ESC = sprintf("%c", 27)
-        bold = ESC "[1m"; ital = ESC "[3m"; dim = ESC "[2m"; rst = ESC "[0m"
-        run_c = ESC "[1;33m"; idle_c = ESC "[32m"; dead_c = ESC "[2;31m"
-        ask_c = ESC "[1;31m"; wait_c = ESC "[36m"; parked_c = ESC "[2m"; act_c = ESC "[1;32m"
-        run_g = run_c "⣽" rst; idle_g = idle_c "✓" rst; dead_g = dead_c "✝" rst
-        ask_g = ask_c "❓" rst; wait_g = wait_c "⏳" rst; parked_g = parked_c "⏸" rst
+        act_c = ESC "[1;32m"
         # ps snapshot: pid, ppid, stat, command — children grouped by root pid
         # (ps sorts by pid, so each group keeps ascending order; at most one
         # line per pid: a later duplicate child wins)
@@ -230,12 +294,15 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
             }
             close(ps_file)
         }
-        # wrapper-detected agents: pane root pid → the agent command name the
-        # pane is displayed under (claude for node /path/to/bin/claude)
+        # detected agents: pane root pid → agent pid and display name
+        # (claude, and the pid of the claude process for node /p/bin/claude)
         ns2 = split(ENVIRON["agent_names"], AN, "\n")
         for (i = 1; i <= ns2; i++) {
-            p = index(AN[i], sep)
-            if (p > 1) aname[substr(AN[i], 1, p - 1)] = substr(AN[i], p + 1)
+            p = index(AN[i], sep); if (p < 1) continue
+            root = substr(AN[i], 1, p - 1); rest = substr(AN[i], p + 1)
+            p = index(rest, sep); if (p < 1) continue
+            apid[root] = substr(rest, 1, p - 1)
+            aname[root] = substr(rest, p + 1)
         }
         ns = split(ENVIRON["pane_statuses"], S, "\n")
         for (i = 1; i <= ns; i++) {
@@ -251,6 +318,7 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
     }
     NF >= 8 {
         id = $1; tgt = $2; ses = $3; widx = $4 + 0; wnm = $5; cmd = $6; det = $8
+        rawcmd = cmd
         if ($10 in aname) cmd = aname[$10]
         r = (id in rank) ? rank[id] : 1000000 + ++fresh
         st = (id in stat) ? stat[id] : ""
@@ -262,17 +330,23 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
         else if (st == "idle") cnt[ses, "i"]++
         else if (st == "dead") cnt[ses, "d"]++
         else if (st == "ask") cnt[ses, "a"]++
-        g = st == "running" ? run_g : st == "idle" ? idle_g : st == "ask" ? ask_g : st == "wait" ? wait_g : st == "parked" ? parked_g : st == "dead" ? dead_g : ""
+        g = state_glyph(st)
         # strip the default FMT prefix "cmd · "; index/substr are byte-based
         # in bwk awk, and " · " is 4 bytes in UTF-8 — same byte math everywhere
         tail = det
         p = index(tail, " · ")
-        if (p > 1 && substr(tail, 1, p - 1) == cmd) tail = substr(tail, p + 4)
+        # a wrapped agent keeps the raw tmux command in the detail, so accept
+        # either form of the prefix
+        if (p > 1 && (substr(tail, 1, p - 1) == cmd || substr(tail, 1, p - 1) == rawcmd)) tail = substr(tail, p + 4)
         tail = restyle(tail, $9)
         tail = colorize(tail)
         b[id] = cmd (g != "" ? " " g : "") " " dim "· " tail rst
         pn[id] = r; pt[id] = tgt; pw[id] = wk
-        kid[id] = (st != "" && st != "dead") ? $10 : ""
+        # subprocess listing starts at the agent PROCESS when detection found
+        # one: the agent is the pane headline already, its workers are the
+        # interesting part. Without a detected agent pid, fall back to the
+        # root process of the pane.
+        kid[id] = (st != "" && st != "dead") ? (($10 in apid) ? apid[$10] : $10) : ""
         if (excl_current && tgt == cur) {
             # the current pane is never a pick target, but its window still
             # shows it read-only: the window line carries the pane and its
@@ -289,7 +363,7 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
     # descendants of an agent pane, walked breadth-first from the ps snapshot;
     # each line keeps the pane jump target so picking a subprocess lands in
     # that pane. Cap: first three plus a count line.
-    function print_kids(tgt, root, indent,    q, dp, qi, n, cur, arr, i, nn, p, kpid, kstat, kcmd, kcs, kg, total, show, pad) {
+    function print_kids(tgt, root, indent,    q, dp, qi, n, cur, arr, i, nn, p, kpid, kstat, kcmd, kcs, kg, total, show, pad, d) {
         if (root == "" || !(root in kids_of)) return
         q[1] = root; dp[1] = 1; qi = 1; n = 1; total = 0
         while (qi <= n) {
@@ -304,7 +378,9 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
                     kcs = substr(kstat, 1, 1)
                     kg = kcs == "Z" ? dead_c "✝" : kcs == "R" ? run_c "▸" : kcs == "T" ? parked_c "⏸" : dim "·"
                     show = substr(kcmd, 1, 56)
-                    pad = (cdp == 1) ? "    " : "      "
+                    # one two-space step per tree level below the agent
+                    pad = "    "
+                    for (d = 1; d < cdp; d++) pad = pad "  "
                     print tgt sep indent pad dim "└" rst " " kg rst " " dim show (length(kcmd) > 56 ? "…" : "") rst
                 }
                 n++; q[n] = kpid; dp[n] = cdp + 1
@@ -358,7 +434,57 @@ tree=$(printf '%s\n' "$panes_raw" | awk -v sep="$sep" \
         }
     }')
 rm -f "$ps_tmp"
-tree="$tree"$'\n[cancel]'"$sep"'[cancel]'
+# [cancel] renders like an action, not an item; field 1 stays the literal
+# target the handler compares against, only the displayed field is styled.
+tree="$tree"$'\n[cancel]'"$sep"$'\033[2;3m[cancel]\033[0m'
+
+# Glyph legend for the tree header: only the states this tree actually shows,
+# so the key teaches the vocabulary without spending attention (or a row) on
+# marks that are not on screen. ANSI is fine — the tree picker runs --ansi.
+states=" $(printf '%s' "$statuses" | cut -d"$sep" -f2 2>/dev/null | tr '\n' ' ') "
+legend=""
+[[ "$states" == *" running "* ]] && legend+=$'\e[1;33m⣽\e[0m busy  '
+[[ "$states" == *" idle "* ]] && legend+=$'\e[32m✓\e[0m done  '
+[[ "$states" == *" ask "* ]] && legend+=$'\e[1;31m❓\e[0m waiting  '
+[[ "$states" == *" wait "* ]] && legend+=$'\e[36m⏳\e[0m timer  '
+[[ "$states" == *" parked "* ]] && legend+=$'\e[2m⏸\e[0m parked  '
+[[ "$states" == *" dead "* ]] && legend+=$'\e[2;31m✝\e[0m dead  '
+legend+=$'\e[1;32m●\e[0m current'
+[[ "$panes_raw" == *"󰩨"* ]] && legend+=$'  \e[1;35m󰩨\e[0m zoomed'
+
+# Content-fit popup: the desktop default (38% height) scrolls a tall tree and
+# wastes space on a short one, so the tree asks for as many rows as it has
+# lines. It only ever grows past the default — shrinking below the familiar
+# box is not worth the surprise — and it stays out of the way when the user
+# pinned a --tmux/--popup geometry or the compact layout owns the popup.
+popup_geom=()
+if [[ "${TMUX_FZF_POPUP_PINNED:-0}" == "0" && "${TMUX_FZF_COMPACT:-0}" != "1" ]]; then
+    client_h="${TMUX_FZF_CLIENT_HEIGHT:-}"
+    [[ "$client_h" =~ ^[0-9]+$ ]] ||
+        client_h=$(tmux display-message -p $TMUX_FZF_CLIENT_ARG '#{client_height}' 2>/dev/null)
+    if [[ "$client_h" =~ ^[0-9]+$ ]] && (( client_h > 0 )); then
+        # Rows the popup needs beyond the list itself: input line, header,
+        # the legend when shown, plus whatever chrome the effective options
+        # add — border (2), footer (1, +1 with its own border) and the
+        # vertical padding. Slight over-estimates are harmless; an
+        # under-estimate would hide the last tree line.
+        chrome=4
+        [[ -n "$legend" ]] && chrome=$((chrome + 1))
+        [[ "$FZF_DEFAULT_OPTS" == *--border* ]] && chrome=$((chrome + 2))
+        if [[ "$FZF_DEFAULT_OPTS" == *--footer=* ]]; then
+            chrome=$((chrome + 1))
+            [[ "$FZF_DEFAULT_OPTS" == *--footer-border* ]] && chrome=$((chrome + 1))
+        fi
+        pad=$(printf '%s' "$FZF_DEFAULT_OPTS" | sed -n 's/.*--padding=\([0-9][0-9]*\).*/\1/p')
+        [[ "$pad" =~ ^[0-9]+$ ]] && chrome=$((chrome + pad * 2))
+        rows=$(( $(printf '%s\n' "$tree" | wc -l) + chrome ))
+        floor=$(( client_h * 38 / 100 ))
+        (( rows < floor )) && rows=$floor
+        cap=$(( client_h * 88 / 100 ))
+        (( rows > cap )) && rows=$cap
+        popup_geom=(--tmux "center,${TMUX_FZF_POPUP_WIDTH:-62}%,$rows")
+    fi
+fi
 
 if [[ -z "$1" ]]; then
     action=$(printf "switch\nbreak\njoin\nswap\nlayout\nkill\nresize\n[cancel]" | fzf --header 'Select an action.')
@@ -400,7 +526,12 @@ else
     if [[ "$action" == "switch" || "$action" == "join" ]]; then
         # The tree leads; ANSI/delimiter/with-nth only affect how fzf shows and
         # searches field 2 — returned lines are still "target<sep>display".
-        target_origin=$(printf '%s\n' "$tree" | fzf "${fzf_header[@]}" \
+        # The header carries the glyph legend on a second line; the popup
+        # geometry (when the user did not pin one) fits the tree's height.
+        tree_header='Select target pane.'
+        [[ "$action" == "join" ]] && tree_header='Select target pane(s). Press TAB to mark multiple items.'
+        [[ -n "$legend" ]] && tree_header="$tree_header"$'\n'"$legend"
+        target_origin=$(printf '%s\n' "$tree" | fzf --header "$tree_header" "${popup_geom[@]}" \
             --ansi --delimiter="$sep" --with-nth=2 \
             "${TMUX_FZF_PREVIEW_OPTIONS[@]}")
         target=${target_origin%%"$sep"*}

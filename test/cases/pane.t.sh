@@ -21,7 +21,7 @@ assert_contains "unit-separator delimiter passed" "--delimiter=" "$(sed -n '/== 
 assert_contains "display restricted to field 2" "<--with-nth=2>" "$(sed -n '/== ARGV/,/== ENV/p' "$SANDBOX/fzf-dump")"
 assert_contains "header leads argv" "== ARGV
   <--header>
-  <Select target pane.>" "$(sed -n '/== ARGV/,/== ENV/p' "$SANDBOX/fzf-dump" | sed '$d')"
+  <Select target pane." "$(sed -n '/== ARGV/,/== ENV/p' "$SANDBOX/fzf-dump" | sed '$d')"
 assert_contains "preview command passed as argv" "
   <--preview>
   <$REPO_ROOT/scripts/.preview {}>" "$(sed -n '/== ARGV/,/== ENV/p' "$SANDBOX/fzf-dump" | sed '$d')"
@@ -192,11 +192,14 @@ line=$(printf '%s\n' "$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump-8" | sed 1d)" 
 assert_contains "expired wait falls back to done" "claude $(printf '\033[32m✓\033[0m')" "$line"
 rm -rf "$TAS"
 
-# kill keeps the flat "S:W.P: detail" list (with [current] shortcut)
+# kill keeps the flat "S:W.P: detail" list (with [current] shortcut); the
+# detail is styled like the tree — dim separator, agent name and state glyph
 stub_fzf_pick "$SANDBOX/fzf-dump-4"
 "$PWD/scripts/pane.sh" kill >/dev/null 2>&1
-assert_contains "kill uses the flat list" "dev:2.2: htop · ~/d/authservice [80x24]" \
-    "$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump-4")"
+FLAT4=$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump-4")
+assert_contains "kill uses the flat list" "dev:2.2: htop $(printf '\033[2m· ~/d/authservice [80x24]\033[0m')" "$FLAT4"
+assert_contains "flat list names the wrapped agent" "dev:2.3: claude $(printf '\033[1;33m⣽\033[0m')" "$FLAT4"
+assert_contains "flat list carries the idle state" "ops:0.1: claude $(printf '\033[32m✓\033[0m')" "$FLAT4"
 
 # path styles: fish (default) shortens every directory but the last to one
 # character; full keeps the path verbatim; basename keeps only the project dir
@@ -224,6 +227,64 @@ printf '%s\n' "$STDIN11" | cut -d"$sep" -f1 | grep -qx "ops:0.0" \
     || { TESTS_PASS=$((TESTS_PASS+1)); echo "  ok   current pane stays out of the pick list"; }
 unset STUB_CURRENT
 stub_tmux
+
+# Glyph legend: the tree header explains only the states on screen, and the
+# cancel row reads as an action (styled field 2, clean target field 1)
+stub_fzf_pick "$SANDBOX/fzf-dump-12"
+"$PWD/scripts/pane.sh" switch >/dev/null 2>&1
+ARGV12=$(sed -n '/== ARGV/,/== ENV/p' "$SANDBOX/fzf-dump-12" | sed '$d')
+assert_contains "legend explains the running glyph" "$(printf '\033[1;33m⣽\033[0m busy')" "$ARGV12"
+assert_contains "legend explains the idle glyph" "$(printf '\033[32m✓\033[0m done')" "$ARGV12"
+assert_contains "legend marks the current pane" "$(printf '\033[1;32m●\033[0m current')" "$ARGV12"
+assert_contains "legend marks zoomed windows" "$(printf '\033[1;35m󰩨\033[0m zoomed')" "$ARGV12"
+STDIN12=$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump-12" | sed 1d)
+assert_contains "cancel row renders as an action" "$sep$(printf '\033[2;3m[cancel]\033[0m')" "$STDIN12"
+printf '%s\n' "$STDIN12" | cut -d"$sep" -f1 | grep -qx "\[cancel\]" \
+    && { TESTS_PASS=$((TESTS_PASS+1)); echo "  ok   cancel target stays clean"; } \
+    || { TESTS_FAIL=$((TESTS_FAIL+1)); echo "  FAIL cancel target carries styling"; }
+
+# Agent behind a shell: the pane root is the shell, claude is its child. The
+# pane still reads "claude", and the subprocess list starts at the agent —
+# claude itself is not repeated — with one indent step per level.
+cat > "$STUB_BIN/ps" <<'PSTUB'
+#!/usr/bin/env bash
+printf '  5014  4801 S zsh\n'
+printf '  5015  5014 S env DEBUG=1 node /usr/local/bin/claude --resume\n'
+printf '  5021  5015 S bash -c rg -n pattern src\n'
+printf '  5022  5021 S rg -n pattern src\n'
+printf '    1     0 S /sbin/launchd\n'
+PSTUB
+chmod +x "$STUB_BIN/ps"
+stub_fzf_pick "$SANDBOX/fzf-dump-13"
+"$PWD/scripts/pane.sh" switch >/dev/null 2>&1
+STDIN13=$(sed -n '/== STDIN/,$p' "$SANDBOX/fzf-dump-13" | sed 1d | sed 's/\x1b\[[0-9;]*m//g')
+printf '%s\n' "$STDIN13" | grep -q 'omp --continue\|claude --resume' \
+    && { TESTS_FAIL=$((TESTS_FAIL+1)); echo "  FAIL agent repeated as its own subprocess"; } \
+    || { TESTS_PASS=$((TESTS_PASS+1)); echo "  ok   agent not repeated as its own subprocess"; }
+assert_contains "subtree rooted at the agent" "└ · bash -c rg -n pattern src" "$STDIN13"
+assert_contains "grandchild indented one step deeper" "├" "$STDIN13"
+printf '%s\n' "$STDIN13" | grep -q '^dev:2.3.*      └ · bash' && printf '%s\n' "$STDIN13" | grep -q '        └ · rg -n pattern' \
+    && { TESTS_PASS=$((TESTS_PASS+1)); echo "  ok   subprocess indent steps by depth"; } \
+    || { TESTS_FAIL=$((TESTS_FAIL+1)); echo "  FAIL subprocess depth indent"; }
+stub_tmux
+
+# Popup sizing: the tree asks for a height that fits its lines, but only when
+# the user has not pinned a geometry and the compact layout is not in charge.
+stub_fzf_pick "$SANDBOX/fzf-dump-14"
+TMUX_FZF_CLIENT_HEIGHT=40 TMUX_FZF_CLIENT_WIDTH=200 "$PWD/scripts/pane.sh" switch >/dev/null 2>&1
+assert_contains "tree popup sized to the tree" "<--tmux>" "$(sed -n '/== ARGV/,/== ENV/p' "$SANDBOX/fzf-dump-14")"
+assert_contains "tree popup keeps the desktop width" "center,62%," "$(sed -n '/== ARGV/,/== ENV/p' "$SANDBOX/fzf-dump-14")"
+stub_fzf_pick "$SANDBOX/fzf-dump-15"
+FZF_DEFAULT_OPTS="--tmux center,80%,50%" TMUX_FZF_CLIENT_HEIGHT=40 TMUX_FZF_CLIENT_WIDTH=200 \
+    "$PWD/scripts/pane.sh" switch >/dev/null 2>&1
+grep -q '<--tmux>' "$SANDBOX/fzf-dump-15" \
+    && { TESTS_FAIL=$((TESTS_FAIL+1)); echo "  FAIL pinned popup geometry overridden"; } \
+    || { TESTS_PASS=$((TESTS_PASS+1)); echo "  ok   pinned popup geometry wins"; }
+stub_fzf_pick "$SANDBOX/fzf-dump-16"
+TMUX_FZF_CLIENT_HEIGHT=20 TMUX_FZF_CLIENT_WIDTH=80 "$PWD/scripts/pane.sh" switch >/dev/null 2>&1
+grep -q '<--tmux>' "$SANDBOX/fzf-dump-16" \
+    && { TESTS_FAIL=$((TESTS_FAIL+1)); echo "  FAIL compact layout got tree sizing"; } \
+    || { TESTS_PASS=$((TESTS_PASS+1)); echo "  ok   compact layout owns the geometry"; }
 
 # .preview understands both line shapes: tree field 1 and flat "S:W.P: ..."
 out=$("$PWD/scripts/.preview" "$(printf 'dev:2.2\037▸ dev')" 2>&1)
